@@ -35,6 +35,12 @@ class GetStatusUseCase:
         self._uow_factory = unit_of_work_factory
 
     def execute(self, limit: int = 10) -> GetStatusResult:
+        """Return the ``limit`` most recent pipeline runs newest-first.
+
+        ``limit`` is clamped to the range [1, 100] to prevent unbounded
+        result sets. Also returns aggregate counts (total runs, total
+        videos) so the CLI can render the dashboard header in one query.
+        """
         limit = max(1, min(limit, 100))
         with self._uow_factory() as uow:
             runs = uow.pipeline_runs.list_recent(limit=limit)

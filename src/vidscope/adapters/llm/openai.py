@@ -60,6 +60,14 @@ class OpenAIAnalyzer:
         return _PROVIDER_NAME
 
     def analyze(self, transcript: Transcript) -> Analysis:
+        """Send the transcript through the shared OpenAI-compatible helper.
+
+        The helper handles message building, JSON-mode request,
+        retry/backoff, response parsing, and Analysis construction.
+        Per-call client lifecycle: when the caller injected a client
+        (tests), we never close it. Otherwise the temporary client
+        we built is closed in the finally branch.
+        """
         client = self._client or httpx.Client(timeout=self._timeout)
         try:
             return run_openai_compatible(

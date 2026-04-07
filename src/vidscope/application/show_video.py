@@ -32,6 +32,12 @@ class ShowVideoUseCase:
         self._uow_factory = unit_of_work_factory
 
     def execute(self, video_id: int) -> ShowVideoResult:
+        """Fetch the full domain record for ``video_id`` in one transaction.
+
+        Joins video metadata + transcript + frames + latest analysis
+        into a single :class:`ShowVideoResult`. Returns ``found=False``
+        when no video matches the id — never raises on missing rows.
+        """
         with self._uow_factory() as uow:
             video = uow.videos.get(VideoId(video_id))
             if video is None:

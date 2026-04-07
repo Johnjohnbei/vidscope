@@ -1,9 +1,10 @@
 # VidScope Watchlist
 
 The watchlist lets you track public accounts on YouTube, TikTok, and
-Instagram and ingest their newest videos on demand. It is the M003
-deliverable: M001 shipped on-demand single-video ingestion (`vidscope
-add <url>`); M003 adds the long-running tracking layer on top.
+Instagram and ingest their newest videos on demand. Where `vidscope
+add <url>` handles a single video, `vidscope watch` handles the
+ongoing tracking layer on top: declare accounts, refresh on a
+schedule, batch-process anything new.
 
 ## Concepts
 

@@ -202,6 +202,13 @@ class GetCookiesStatusUseCase:
     configured_cookies_file: Path | None
 
     def execute(self) -> CookiesStatus:
+        """Read the current cookies state and return a snapshot.
+
+        Surfaces both the canonical path under ``data_dir`` and any
+        ``VIDSCOPE_COOKIES_FILE`` env override so the CLI can warn the
+        user when their installation won't take effect. Never raises —
+        a missing or unreadable file produces a structured result.
+        """
         default_path = _default_cookies_path(self.data_dir)
 
         # Detect env override: if active_path is set and != default_path,
@@ -269,6 +276,13 @@ class ClearCookiesUseCase:
     data_dir: Path
 
     def execute(self) -> ClearCookiesResult:
+        """Remove the canonical cookies file from disk.
+
+        Only ever touches ``<data_dir>/cookies.txt`` — never an
+        env-override file because that file is owned by the user, not
+        VidScope. Never raises — every failure (missing file, permission
+        denied) produces a structured result with a descriptive message.
+        """
         target = _default_cookies_path(self.data_dir)
 
         if not target.exists():
@@ -343,6 +357,13 @@ class CookiesProbeUseCase:
     cookies_configured: bool
 
     def execute(self, url: str | None = None) -> CookiesProbeResult:
+        """Probe ``url`` (or the default Instagram Reel) and return the result.
+
+        Calls :meth:`Downloader.probe` which performs a metadata-only
+        ``extract_info`` call (no media download, no DB write) and
+        wraps the result with a context-aware interpretation derived
+        from ``cookies_configured`` × ``ProbeStatus``. Never raises.
+        """
         target_url = (url or _DEFAULT_PROBE_URL).strip()
         probe = self.downloader.probe(target_url)
         interpretation = self._interpret(probe)

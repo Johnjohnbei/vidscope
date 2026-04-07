@@ -134,6 +134,14 @@ class AddWatchedAccountUseCase:
         self._uow_factory = unit_of_work_factory
 
     def execute(self, url: str) -> AddedAccountResult:
+        """Validate ``url``, derive a (platform, handle) pair, and persist.
+
+        Detects the platform via :func:`detect_platform`, derives the
+        handle from the URL path, and inserts a :class:`WatchedAccount`
+        row. Returns a structured failure (not an exception) for empty
+        URLs, unknown platforms, unparseable handles, and duplicate
+        ``(platform, handle)`` pairs.
+        """
         cleaned = url.strip() if url else ""
         if not cleaned:
             return AddedAccountResult(
@@ -182,22 +190,34 @@ class AddWatchedAccountUseCase:
 
 
 class ListWatchedAccountsUseCase:
+    """Return every watched account in insertion order."""
+
     def __init__(self, *, unit_of_work_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = unit_of_work_factory
 
     def execute(self) -> ListedAccountsResult:
+        """Return all watched accounts and the total count."""
         with self._uow_factory() as uow:
             accounts = tuple(uow.watch_accounts.list_all())
         return ListedAccountsResult(accounts=accounts, total=len(accounts))
 
 
 class RemoveWatchedAccountUseCase:
+    """Remove a watched account by handle, optionally narrowed by platform."""
+
     def __init__(self, *, unit_of_work_factory: UnitOfWorkFactory) -> None:
         self._uow_factory = unit_of_work_factory
 
     def execute(
         self, handle: str, platform: Platform | None = None
     ) -> RemovedAccountResult:
+        """Remove the account matching ``handle`` (and optional ``platform``).
+
+        When ``platform`` is omitted and the handle exists on multiple
+        platforms (e.g. ``@tiktok`` on both YouTube and TikTok), returns
+        a structured failure asking the caller to disambiguate. Never
+        raises on missing accounts — returns ``success=False`` instead.
+        """
         normalized = handle.strip()
         if not normalized:
             return RemovedAccountResult(
@@ -289,6 +309,15 @@ class RefreshWatchlistUseCase:
         self._per_account_limit = per_account_limit
 
     def execute(self) -> RefreshSummary:
+        """Iterate every watched account and ingest any new videos.
+
+        Snapshots the watchlist + existing video IDs in one transaction
+        at the start so the iteration runs against an in-memory dedupe
+        set (O(1) per candidate). Per-account errors are caught and
+        recorded in the returned :class:`RefreshSummary` — a broken
+        account never blocks the rest of the watchlist. Idempotent: a
+        second run after a first ingests zero new videos.
+        """
         started_at = self._clock.now()
 
         # Snapshot the watchlist + collect existing platform_ids per

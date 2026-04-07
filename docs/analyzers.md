@@ -204,8 +204,11 @@ The remediation block underneath the table tells you exactly what to do.
 
 Yes, you can. Existing `Analysis` rows in the database keep their
 original `provider` value — there's no migration. New ingests use the
-new provider. You can mix providers across videos or even re-analyze
-the same video with a different provider in the future (M005+).
+new provider. You can mix providers across videos. Re-analyzing the
+same video with a different provider isn't a supported command yet —
+the workaround is to delete the row directly from `vidscope.db` and
+re-run `vidscope add <url>`, which will go through the analyze stage
+again with the currently-configured provider.
 
 ## Adding a new provider
 

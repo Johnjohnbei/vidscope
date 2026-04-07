@@ -12,7 +12,8 @@ local video library.
   - macOS: `brew install ffmpeg`
   - Linux: `sudo apt install ffmpeg` or your distro's equivalent
 
-That's it. No API keys, no cloud accounts, no server setup.
+That's it. No paid API keys required by default — VidScope ships
+with a zero-cost heuristic analyzer that runs entirely locally.
 
 ## Install
 
@@ -30,28 +31,28 @@ uv sync
 uv run vidscope doctor
 ```
 
-You should see all three checks green:
+You should see all five checks green:
 
 ```
-              vidscope doctor               
-+------------------------------------------+
-| check   | status | detail                |
-|---------+--------+-----------------------|
-| ffmpeg  | ok     | ffmpeg version 8.1    |
-| yt-dlp  | ok     | 2026.03.17            |
-| cookies | ok     | not configured (...)  |
-+------------------------------------------+
+                   vidscope doctor                    
++----------------------------------------------------+
+| check    | status | detail                         |
+|----------+--------+--------------------------------|
+| ffmpeg   | ok     | ffmpeg version 8.1             |
+| yt-dlp   | ok     | 2026.03.17                     |
+| mcp      | ok     | 1.27.0                         |
+| cookies  | ok     | not configured (optional)      |
+| analyzer | ok     | heuristic (default, zero cost) |
++----------------------------------------------------+
 ```
 
-If `ffmpeg` shows `fail`, install it and re-run doctor.
-
-The `cookies` row showing **not configured (optional)** is fine —
-cookies are only needed for Instagram (see `docs/cookies.md`).
+If `ffmpeg` shows `fail`, install it and re-run doctor. The
+`cookies` row showing **not configured (optional)** is fine — cookies
+are only needed for Instagram (see [docs/cookies.md](cookies.md)).
 
 ## Ingest your first video
 
-Pick any public YouTube Short or TikTok video URL. For TikTok, the
-official `@tiktok` account works without auth. Run:
+Pick any public YouTube Short or TikTok video URL. Run:
 
 ```bash
 uv run vidscope add "https://www.youtube.com/shorts/<id>"
@@ -86,10 +87,12 @@ Shows the last 5 pipeline runs (one per stage):
 - `ingest` — downloaded the media via yt-dlp
 - `transcribe` — transcribed the audio via faster-whisper
 - `frames` — extracted frames via ffmpeg
-- `analyze` — produced a heuristic analysis (language, keywords, summary)
+- `analyze` — produced an analysis (language, keywords, summary)
 - `index` — wrote the transcript and analysis into the FTS5 search index
 
 Each row shows the status, the elapsed time, and any error message.
+Re-running `vidscope add` on a partially-failed video resumes from
+the last incomplete stage.
 
 ## List your library
 
@@ -116,6 +119,33 @@ uv run vidscope search "<keyword>"
 Runs a SQLite FTS5 query against transcripts and analysis summaries,
 returns ranked hits with highlighted snippets.
 
+## Find related videos
+
+Once you have a few videos in the library, ask for related content
+by keyword overlap:
+
+```bash
+uv run vidscope suggest 1
+```
+
+Returns up to 5 videos that share keywords with video 1, scored by
+Jaccard similarity. Useful for discovering thematic clusters.
+
+## Track public accounts
+
+Declare an account you want to follow, then refresh on demand to
+ingest any new videos automatically:
+
+```bash
+uv run vidscope watch add https://www.youtube.com/@SomeChannel
+uv run vidscope watch refresh
+```
+
+The refresh is idempotent — running it twice in a row ingests new
+videos on the first run and zero on the second. Schedule it via
+cron / launchd / Task Scheduler for hands-free monitoring. Full
+guide in [docs/watchlist.md](watchlist.md).
+
 ## Where is my data?
 
 VidScope writes everything under your platform's user data dir:
@@ -130,20 +160,30 @@ Inside that dir:
 - `videos/<platform>/<id>/media.<ext>` — downloaded media files
 - `videos/<platform>/<id>/frames/<NNNN>.jpg` — extracted frames
 - `models/` — cached faster-whisper model weights
-- `cookies.txt` — optional cookies file (see `docs/cookies.md`)
+- `cookies.txt` — optional cookies file (managed via `vidscope cookies set`)
 
 To use a different location, set `VIDSCOPE_DATA_DIR` to an absolute
 path.
 
 ## Adding Instagram
 
-Instagram public Reels currently require authentication. Follow
-`docs/cookies.md` to export your browser cookies once, then:
+Instagram public Reels currently require authentication. The
+3-command setup:
 
 ```bash
-export VIDSCOPE_COOKIES_FILE=~/cookies.txt
+# 1. Export cookies.txt from your browser (see docs/cookies.md)
+uv run vidscope cookies set ~/Downloads/cookies.txt
+
+# 2. Verify the cookies authenticate
+uv run vidscope cookies test
+
+# 3. Ingest a Reel
 uv run vidscope add "https://www.instagram.com/reel/<id>/"
 ```
+
+If `vidscope cookies test` reports `auth_required`, your browser
+session has likely expired — re-export and re-run `vidscope cookies
+set`. Full walkthrough in [docs/cookies.md](cookies.md).
 
 ## Choosing a different whisper model
 
@@ -155,11 +195,42 @@ Supported: `tiny`, `tiny.en`, `base` (default), `base.en`, `small`,
 `small.en`, `medium`, `medium.en`, `large-v3`, `distil-large-v3`.
 Bigger = slower + more accurate.
 
-## What's next
+## Opting into LLM analyzers
 
-- The MCP server in M002 lets an AI agent drive your library in
-  conversation.
-- Account monitoring in M003 ingests new videos from watched
-  accounts on a schedule.
-- LLM-backed analyzers in M004 (NVIDIA, Groq, OpenAI, Anthropic)
-  give richer analyses than the default heuristic.
+The default heuristic analyzer is pure-Python and zero-cost. To
+upgrade to an LLM-backed analysis, set `VIDSCOPE_ANALYZER` to one of
+the 5 supported providers and provide the matching API key:
+
+```bash
+# Example: Groq (free tier, no credit card required)
+export VIDSCOPE_GROQ_API_KEY=gsk_...
+export VIDSCOPE_ANALYZER=groq
+uv run vidscope add "<url>"
+```
+
+Supported providers: `groq`, `nvidia`, `openrouter`, `openai`,
+`anthropic`. Full reference with cost/quota table in
+[docs/analyzers.md](analyzers.md).
+
+## Driving VidScope from an AI agent
+
+VidScope ships an MCP server that exposes every use case as a tool
+an AI agent can call. Start it with:
+
+```bash
+uv run vidscope mcp serve
+```
+
+Then point your MCP client (Claude Desktop, Cline, any stdio MCP
+client) at it. Full setup including Claude Desktop config in
+[docs/mcp.md](mcp.md).
+
+## Where to go next
+
+| You want to... | Read |
+|---|---|
+| Set up Instagram cookies properly | [docs/cookies.md](cookies.md) |
+| Track multiple accounts on a schedule | [docs/watchlist.md](watchlist.md) |
+| Use a paid LLM analyzer | [docs/analyzers.md](analyzers.md) |
+| Drive VidScope from Claude or another agent | [docs/mcp.md](mcp.md) |
+| Understand the architecture | [README.md](../README.md) |
