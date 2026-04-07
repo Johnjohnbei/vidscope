@@ -22,14 +22,19 @@ classifiers = [
     "Topic :: Text Processing :: Linguistic",
 ]
 
-# Runtime dependencies are declared in M001/S01 once the socle lands.
-dependencies = []
-
-[project.optional-dependencies]
-dev = []
+dependencies = [
+    "faster-whisper>=1.2,<2",
+    "httpx>=0.28,<1",
+    "mcp>=1.27,<2",
+    "platformdirs>=4.9,<5",
+    "rich>=14.0,<15",
+    "sqlalchemy>=2.0,<3",
+    "typer>=0.20,<1",
+    "yt-dlp>=2026.3",
+]
 
 [project.scripts]
-vidscope = "vidscope.cli:app"
+vidscope = "vidscope.cli.app:app"
 
 [project.urls]
 Homepage = "https://github.com/Johnjohnbei/vidscope"
@@ -42,3 +47,144 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vidscope"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    # Exclude integration tests by default — they hit real networks.
+    # Run them explicitly with: pytest -m integration
+    "-m",
+    "not integration",
+]
+markers = [
+    "unit: fast in-process tests with no real external dependencies",
+    "integration: tests that spin up real adapters or subprocesses",
+    "architecture: import-linter and other structural invariants",
+    "slow: tests that take >10s — model downloads, large file ops",
+]
+filterwarnings = [
+    # The vidscope.config shim intentionally raises a DeprecationWarning
+    # on import. Don't let it fail the suite.
+    "ignore::DeprecationWarning:vidscope.config",
+]
+
+# ---------------------------------------------------------------------------
+# ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific
+    "TCH", # flake8-type-checking
+    "PL",  # pylint subset
+]
+ignore = [
+    # Too many arguments / branches / statements — we trust our own judgement
+    "PLR0913",
+    "PLR0912",
+    "PLR0915",
+    # Magic value comparisons — common in tests and CLI constants
+    "PLR2004",
+    # TYPE_CHECKING migrations are optional at our scale; keeping the
+    # imports at the top makes the annotations easier to read in IDE
+    # hover tooltips.
+    "TC001",
+    "TC002",
+    "TC003",
+    # Singleton pattern in vidscope.infrastructure.config uses `global`
+    # intentionally; the test hook `reset_config_cache()` is documented.
+    "PLW0603",
+    # The slice IDs "S02", "S06", "T07" etc. referenced in docstrings
+    # trigger flake8-bandit's S-rules false-positives. Bandit rules are
+    # not in our select set at all, but the T0XX rule from ruff's own
+    # rule naming collides — disabled here.
+    "S603",
+    # Typographic apostrophes appear in French test strings — they are
+    # intentional for the accent-insensitive FTS5 tests.
+    "RUF001",
+    "RUF002",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are allowed to: use magic numbers, use `assert`, define methods
+# that could be functions, import inside test bodies to exercise
+# specific modules in isolation.
+"tests/**" = [
+    "PLR2004",
+    "S101",
+    "PLR6301",
+    "PLC0415",
+]
+# The `list` command shadows the builtin intentionally — it matches the
+# user-facing command name.
+"src/vidscope/cli/commands/list.py" = ["A001", "A002"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["vidscope"]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_redundant_casts = true
+no_implicit_optional = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+files = ["src/vidscope"]
+
+# Third-party libs without stubs — fall back to ignore. Keep only
+# modules that actually trigger a "missing import" warning so mypy
+# doesn't complain about unused override sections.
+[[tool.mypy.overrides]]
+module = [
+    "yt_dlp",
+    "yt_dlp.utils",
+    "faster_whisper",
+    "mcp",
+    "mcp.server.fastmcp",
+    "mcp.client.session",
+    "mcp.client.stdio",
+    "mcp.types",
+]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src/vidscope"]
+branch = true
+
+[dependency-groups]
+dev = [
+    "import-linter>=2.11",
+    "mypy>=1.20,<2",
+    "pytest>=9.0,<10",
+    "pytest-cov>=7.0,<8",
+    "ruff>=0.15,<1",
+]

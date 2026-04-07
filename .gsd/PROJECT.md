@@ -4,7 +4,7 @@
 
 VidScope is a personal video-intelligence tool. Given a URL to a public video on Instagram, TikTok, or YouTube, it downloads the media locally, transcribes the audio, extracts representative frames, produces a structured analysis of the content, and stores everything in a searchable local database. It exposes both a CLI (`vidscope add <url>`, `vidscope search <query>`) and — in later milestones — an MCP server so an AI agent can query and enrich the library during conversation.
 
-The current focus is M001: the single-URL end-to-end pipeline. Account-monitoring, cron-based refresh, and related-video suggestion arrive in later milestones.
+M001 (single-URL pipeline), M002 (MCP server + related-video suggestions), M003 (account monitoring + scheduled refresh), M004 (pluggable LLM analyzers), and M005 (cookies UX improvements) are complete. **All planned milestones are done.**
 
 ## Core Value
 
@@ -12,7 +12,30 @@ A single command turns a video URL into a searchable, analyzable record on the l
 
 ## Current State
 
-Project bootstrapped. Git repo initialized and pushed to `github.com/Johnjohnbei/vidscope` (private). Python packaging skeleton in place (`pyproject.toml`, src layout planned). No runtime code yet — M001/S01 will land the socle, build toolchain, and CLI skeleton.
+**All 5 planned milestones complete.** The full single-video pipeline, the MCP server, related-video suggestions, the account watchlist, 5 pluggable LLM analyzer providers, and the polished cookies UX are all alive.
+
+**Platform priority (D027):** Instagram is the primary target, then TikTok, then YouTube.
+
+**What works today:**
+- **`vidscope add <url>`** downloads a YouTube Short, TikTok video, or Instagram Reel (with cookies) via yt-dlp, stores the media under `MediaStorage` at a stable key, transcribes the audio via faster-whisper, extracts ~10 frames via ffmpeg, runs the heuristic analyzer (or any registered analyzer), and indexes the resulting text into FTS5 — five stages, one transactional `pipeline_runs` row each.
+- **`vidscope search <query>`** runs FTS5 against transcripts + analysis text.
+- **`vidscope show <id>`**, **`vidscope list`**, **`vidscope status`** inspect the library.
+- **`vidscope suggest <id>`** returns related videos by Jaccard similarity over keyword sets.
+- **`vidscope mcp serve`** starts an MCP stdio server exposing 6 tools (ingest, search, get_video, list_videos, get_status, suggest_related) so agents can drive the library directly.
+- **`vidscope watch add/list/remove/refresh`** tracks public accounts and refreshes them on demand. Refresh is idempotent, captures per-account errors without stopping iteration, and reuses the existing 5-stage pipeline for every newly discovered video.
+- **`VIDSCOPE_ANALYZER=<provider>`** opts into one of 5 LLM analyzers (groq, nvidia, openrouter, openai, anthropic). Each provider lives in `vidscope/adapters/llm/<name>.py` behind a structurally enforced isolation contract. The default is `heuristic` — pure-Python, zero cost, zero network. Full guide in `docs/analyzers.md`.
+- **`vidscope cookies set/status/test/clear`** manages the Netscape cookies file used by yt-dlp for gated platforms (Instagram primarily, age-gated YouTube secondarily). `vidscope cookies test` is the killer command: a metadata-only probe that verifies cookies authenticate without ingesting a real video. Failed `vidscope add` runs against gated platforms surface a typed `CookieAuthError` pointing the user at `vidscope cookies test`. Full guide in `docs/cookies.md`.
+- **`vidscope doctor`** reports ffmpeg / yt-dlp / mcp / cookies / analyzer availability.
+
+**Architecture:** strict hexagonal layering enforced by import-linter (9 contracts). 84 source files, mypy-strict-clean, 618 unit tests + 3 architecture tests + 2 MCP subprocess tests + 3 live ingest integration tests. Pipeline stages implement a common `Stage` Protocol; the runner handles resume-from-failure, transactional run-row coupling, and typed error dispatch. The 9th contract (`llm-never-imports-other-adapters`) structurally enforces "one LLM provider per file". M005 also tightened the `application-has-no-adapters` contract to forbid `vidscope.infrastructure` imports — closing a pre-existing architectural hole that allowed application use cases to depend on infrastructure.
+
+**Target content profile (D026):** short-form vertical content only — Instagram Reels (<90s), TikTok videos, YouTube Shorts (<60s).
+
+**Validated requirements:** R001 (TikTok + YouTube without cookies, Instagram with cookies), R002, R003, R004, R005, R006, R007, R008, R009, R010, R020 (MCP server), R021 (watchlist), R022 (scheduled refresh), R023 (related-video suggestion), R024 (LLM analyzers — 5 providers shipped), R025 (cookies UX complete with set/status/test/clear + CookieAuthError).
+
+**Cookies feature:** users export `cookies.txt` from a logged-in browser once, then `vidscope cookies set <path>` installs it after format validation, `vidscope cookies test` verifies it authenticates against Instagram via a metadata-only probe (no real ingest required), and `vidscope add` surfaces a typed `CookieAuthError` with actionable remediation when the session expires. Full guide in `docs/cookies.md`.
+
+**Next:** All 5 planned milestones are complete. Future work would be additive: semantic search (R026), expanded auth scenarios (Instagram stories, TikTok drafts), or a polish pass on the rich CLI output.
 
 ## Architecture / Key Patterns
 
@@ -51,8 +74,8 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 
 ## Milestone Sequence
 
-- [ ] M001: Pipeline ponctuel end-to-end — one command ingests a URL and produces a searchable, analyzed record locally
-- [ ] M002: MCP wrapper and related-video suggestions — agent can query, search, and propose related videos in chat
-- [ ] M003: Account monitoring and scheduled refresh — declare public accounts, refresh via manual command or cron, batch-process new videos
-- [ ] M004: Pluggable analyzer providers (NVIDIA, Groq, OpenRouter, OpenAI, Anthropic) — opt-in richer analysis beyond local heuristics
-- [ ] M005: Cookies/auth for private or story content — support gated content via exported browser cookies
+- [x] M001: Pipeline ponctuel end-to-end — one command ingests a URL and produces a searchable, analyzed record locally
+- [x] M002: MCP wrapper and related-video suggestions — agent can query, search, and propose related videos in chat
+- [x] M003: Account monitoring and scheduled refresh — declare public accounts, refresh via manual command or cron, batch-process new videos
+- [x] M004: Pluggable analyzer providers (NVIDIA, Groq, OpenRouter, OpenAI, Anthropic) — opt-in richer analysis beyond local heuristics
+- [x] M005: Cookies UX polish — vidscope cookies set/status/test/clear, CookieAuthError remediation, browser walkthrough docs

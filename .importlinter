@@ -1,0 +1,176 @@
+[importlinter]
+root_package = vidscope
+include_external_packages = True
+
+# ---------------------------------------------------------------------------
+# Layered architecture - inward-only dependency rule.
+#
+# Domain is the innermost ring. Each subsequent layer is allowed to
+# import from every ring closer to the center but NEVER from rings
+# further out. infrastructure is the composition root and is allowed
+# to reach any layer (it's how adapters get wired).
+# ---------------------------------------------------------------------------
+[importlinter:contract:layers]
+name = Hexagonal layering - inward-only
+type = layers
+layers =
+    vidscope.cli
+    vidscope.mcp
+    vidscope.application
+    vidscope.pipeline
+    vidscope.adapters
+    vidscope.ports
+    vidscope.domain
+# `vidscope.cli` sits above `vidscope.mcp` in the layer stack: the
+# CLI is the single user-facing entry point and is allowed to
+# orchestrate any other layer, including delegating to the MCP
+# server for `vidscope mcp serve`. The MCP layer itself cannot
+# reach back into the CLI — enforced by the layers rule which only
+# permits downward imports.
+#
+# `vidscope.infrastructure` is deliberately omitted from the layers
+# stack because it is the composition root - it must be free to
+# import any layer in order to wire them together. The
+# `adapters-never-cross` contract below still constrains how
+# infrastructure builds things.
+
+# ---------------------------------------------------------------------------
+# Adapters may never import each other. Each adapter sub-package must
+# only reach into domain and ports. This prevents an sqlite adapter
+# from accidentally depending on the fs adapter (or a future ytdlp
+# adapter) without going through the infrastructure composition root.
+# Implemented as two directional forbidden contracts so a package is
+# never forbidden from importing itself.
+# ---------------------------------------------------------------------------
+[importlinter:contract:sqlite-never-imports-fs]
+name = sqlite adapter does not import fs adapter
+type = forbidden
+source_modules =
+    vidscope.adapters.sqlite
+forbidden_modules =
+    vidscope.adapters.fs
+
+[importlinter:contract:fs-never-imports-sqlite]
+name = fs adapter does not import sqlite adapter
+type = forbidden
+source_modules =
+    vidscope.adapters.fs
+forbidden_modules =
+    vidscope.adapters.sqlite
+
+[importlinter:contract:llm-never-imports-other-adapters]
+name = llm adapter does not import other adapters
+type = forbidden
+source_modules =
+    vidscope.adapters.llm
+forbidden_modules =
+    vidscope.adapters.sqlite
+    vidscope.adapters.fs
+    vidscope.adapters.ytdlp
+    vidscope.adapters.whisper
+    vidscope.adapters.ffmpeg
+    vidscope.adapters.heuristic
+    vidscope.infrastructure
+    vidscope.application
+    vidscope.pipeline
+    vidscope.cli
+    vidscope.mcp
+
+# ---------------------------------------------------------------------------
+# Domain and ports must not depend on SQLAlchemy, Typer, rich, or any
+# third-party runtime library. This is the heart of the hexagonal
+# architecture - the innermost layers stay portable and mock-free.
+# ---------------------------------------------------------------------------
+[importlinter:contract:domain-is-pure]
+name = Domain is pure Python - no third-party runtime deps
+type = forbidden
+source_modules =
+    vidscope.domain
+forbidden_modules =
+    sqlalchemy
+    typer
+    rich
+    platformdirs
+    yt_dlp
+    faster_whisper
+    httpx
+    mcp
+
+[importlinter:contract:ports-are-pure]
+name = Ports are pure Python - no third-party runtime deps
+type = forbidden
+source_modules =
+    vidscope.ports
+forbidden_modules =
+    sqlalchemy
+    typer
+    rich
+    platformdirs
+    yt_dlp
+    faster_whisper
+    httpx
+    mcp
+
+# ---------------------------------------------------------------------------
+# The pipeline and application layers must not reach for concrete
+# adapters directly. Everything they need is in ports + domain. Only
+# the infrastructure composition root is allowed to see adapters.
+# ---------------------------------------------------------------------------
+[importlinter:contract:pipeline-has-no-adapters]
+name = Pipeline layer depends only on ports and domain
+type = forbidden
+source_modules =
+    vidscope.pipeline
+forbidden_modules =
+    vidscope.adapters
+    vidscope.adapters.sqlite
+    vidscope.adapters.fs
+    vidscope.adapters.llm
+    vidscope.infrastructure
+    vidscope.cli
+
+[importlinter:contract:application-has-no-adapters]
+name = Application layer depends only on ports and domain
+type = forbidden
+source_modules =
+    vidscope.application
+forbidden_modules =
+    vidscope.adapters
+    vidscope.adapters.sqlite
+    vidscope.adapters.fs
+    vidscope.adapters.llm
+    vidscope.cli
+    vidscope.infrastructure
+
+# ---------------------------------------------------------------------------
+# The mcp interface layer must not reach for concrete adapters
+# directly. Same rule as cli: consume use cases through
+# vidscope.application, build a container via
+# vidscope.infrastructure.container, never touch adapters directly.
+# This guarantees that swapping the SQLite adapter for Postgres
+# (or yt_dlp for a mock downloader in tests) requires zero changes
+# to the mcp layer.
+#
+# vidscope.mcp is ALLOWED to import vidscope.infrastructure.container
+# (the composition root) — that is the supported way to obtain a
+# ready-to-use Container. The ignore_imports below whitelists the
+# transitive paths that flow through the composition root. Any new
+# direct import from vidscope.mcp.* to vidscope.adapters.* would
+# still be rejected because it bypasses infrastructure.
+# ---------------------------------------------------------------------------
+[importlinter:contract:mcp-has-no-adapters]
+name = MCP interface layer depends only on application and infrastructure
+type = forbidden
+source_modules =
+    vidscope.mcp
+forbidden_modules =
+    vidscope.adapters
+    vidscope.adapters.sqlite
+    vidscope.adapters.fs
+    vidscope.adapters.ytdlp
+    vidscope.adapters.whisper
+    vidscope.adapters.ffmpeg
+    vidscope.adapters.heuristic
+    vidscope.adapters.llm
+ignore_imports =
+    vidscope.mcp.server -> vidscope.infrastructure.container

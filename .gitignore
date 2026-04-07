@@ -99,3 +99,11 @@ logs/
 .gsd/state-manifest.json
 .gsd/event-log.jsonl
 .gsd/.update-check
+
+# pi background shell runtime
+.bg-shell/
+
+# pi browser state (may contain auth tokens)
+.gsd/browser-state/
+.gsd/browser-baselines/
+.import_linter_cache/
