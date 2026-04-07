@@ -1,0 +1,101 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ---------- Virtual environments ----------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---------- uv ----------
+.uv/
+
+# ---------- Testing / coverage ----------
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+
+# ---------- IDE / editors ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---------- VidScope runtime data ----------
+# Local cache of downloaded videos, frames, audio
+data/
+cache/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Downloaded media artifacts
+*.mp4
+*.webm
+*.mkv
+*.mp3
+*.wav
+*.m4a
+
+# Whisper model cache
+models/
+
+# ---------- Secrets ----------
+.env
+.env.*
+!.env.example
+cookies.txt
+*.cookies
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- GSD runtime (keep planning artifacts, ignore runtime state) ----------
+.gsd/runtime/
+.gsd/activity/
+.gsd/worktrees/
+.gsd/sessions/
+.gsd/*.db
+.gsd/*.db-shm
+.gsd/*.db-wal
+.gsd/state-manifest.json
+.gsd/event-log.jsonl
+.gsd/.update-check
