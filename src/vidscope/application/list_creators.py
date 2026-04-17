@@ -75,16 +75,14 @@ class ListCreatorsUseCase:
             elif min_followers is not None:
                 creators = uow.creators.list_by_min_followers(min_followers, limit=limit)
             else:
-                # No filter — return most recently seen across all platforms
-                creators = uow.creators.list_by_platform(
-                    Platform.YOUTUBE, limit=limit
-                ) + uow.creators.list_by_platform(
-                    Platform.TIKTOK, limit=limit
-                ) + uow.creators.list_by_platform(
-                    Platform.INSTAGRAM, limit=limit
-                )
+                # No filter — return most recently seen across all platforms.
+                # Drive the loop from the enum so new platforms are included
+                # automatically without any code change here.
+                all_creators: list[Creator] = []
+                for plat in Platform:
+                    all_creators.extend(uow.creators.list_by_platform(plat, limit=200))
                 creators = sorted(
-                    creators,
+                    all_creators,
                     key=lambda c: c.last_seen_at or c.created_at or _EPOCH,
                     reverse=True,
                 )[:limit]
