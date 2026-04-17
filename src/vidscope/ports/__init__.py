@@ -33,6 +33,7 @@ from vidscope.ports.pipeline import (
 )
 from vidscope.ports.repositories import (
     AnalysisRepository,
+    CreatorRepository,
     FrameRepository,
     PipelineRunRepository,
     TranscriptRepository,
@@ -48,6 +49,7 @@ __all__ = [
     "Analyzer",
     "ChannelEntry",
     "Clock",
+    "CreatorRepository",
     "Downloader",
     "FrameExtractor",
     "FrameRepository",

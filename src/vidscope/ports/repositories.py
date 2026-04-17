@@ -30,10 +30,13 @@ from typing import Protocol, runtime_checkable
 
 from vidscope.domain import (
     Analysis,
+    Creator,
+    CreatorId,
     Frame,
     PipelineRun,
     Platform,
     PlatformId,
+    PlatformUserId,
     RunStatus,
     StageName,
     Transcript,
@@ -45,6 +48,7 @@ from vidscope.domain import (
 
 __all__ = [
     "AnalysisRepository",
+    "CreatorRepository",
     "FrameRepository",
     "PipelineRunRepository",
     "TranscriptRepository",
@@ -271,4 +275,73 @@ class WatchRefreshRepository(Protocol):
 
     def list_recent(self, limit: int = 10) -> list[WatchRefresh]:
         """Return the ``limit`` most recent refreshes, newest first."""
+        ...
+
+
+@runtime_checkable
+class CreatorRepository(Protocol):
+    """Persistence for :class:`~vidscope.domain.entities.Creator`.
+
+    Identity anchors on ``(platform, platform_user_id)`` — the
+    platform-stable id that survives account renames (per D-01).
+    ``creators.id`` remains a surrogate autoincrement INT PK so FKs
+    and CLI arguments stay ergonomic. ``handle`` is stored but NOT
+    unique — the @-name may change, and the repository upserts
+    through ``platform_user_id`` only.
+
+    Adapters must enforce the compound UNIQUE constraint on
+    ``(platform, platform_user_id)`` via :meth:`upsert`.
+    """
+
+    def upsert(self, creator: Creator) -> Creator:
+        """Insert ``creator`` or update the existing row matching
+        ``(platform, platform_user_id)``. Returns the resulting
+        entity with ``id`` populated. Idempotent.
+
+        Fields present on ``creator`` overwrite the existing row;
+        ``created_at`` and ``first_seen_at`` are preserved on update
+        (archaeology), ``last_seen_at`` is refreshed.
+        """
+        ...
+
+    def get(self, creator_id: CreatorId) -> Creator | None:
+        """Return the creator with ``id == creator_id``, or ``None``."""
+        ...
+
+    def find_by_platform_user_id(
+        self, platform: Platform, platform_user_id: PlatformUserId
+    ) -> Creator | None:
+        """Return the creator matching ``(platform, platform_user_id)``
+        or ``None``. This is the canonical identity lookup (per D-01)."""
+        ...
+
+    def find_by_handle(
+        self, platform: Platform, handle: str
+    ) -> Creator | None:
+        """Return the creator matching ``(platform, handle)`` or ``None``.
+
+        Handle is non-unique across time (rename history) but unique at
+        any given moment per platform. On handle collisions (shouldn't
+        happen in practice because handles are platform-enforced
+        unique), return the most recently seen row.
+        """
+        ...
+
+    def list_by_platform(
+        self, platform: Platform, *, limit: int = 50
+    ) -> list[Creator]:
+        """Return up to ``limit`` creators on ``platform``, most
+        recently seen first."""
+        ...
+
+    def list_by_min_followers(
+        self, min_count: int, *, limit: int = 50
+    ) -> list[Creator]:
+        """Return up to ``limit`` creators with
+        ``follower_count >= min_count``, highest-follower first. Rows
+        where ``follower_count IS NULL`` are excluded."""
+        ...
+
+    def count(self) -> int:
+        """Return the total number of creators in the store."""
         ...
