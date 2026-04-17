@@ -24,9 +24,11 @@ from enum import StrEnum
 from typing import NewType
 
 __all__ = [
+    "CreatorId",
     "Language",
     "Platform",
     "PlatformId",
+    "PlatformUserId",
     "RunStatus",
     "StageName",
     "VideoId",
@@ -39,6 +41,17 @@ VideoId = NewType("VideoId", int)
 PlatformId = NewType("PlatformId", str)
 """Platform-assigned stable identifier (e.g. YouTube video id, TikTok aweme
 id). Combined with :class:`Platform` it is globally unique across sources."""
+
+CreatorId = NewType("CreatorId", int)
+"""Database-assigned primary key for a :class:`Creator`. Surrogate
+autoincrement INT PK — opaque to callers, ergonomic for FKs and CLI
+arguments (per D-01)."""
+
+PlatformUserId = NewType("PlatformUserId", str)
+"""Platform-assigned stable user identifier — yt-dlp's ``uploader_id``.
+Never changes on account rename (per D-01). Combined with
+:class:`Platform` it is the canonical UNIQUE key on the ``creators``
+table."""
 
 
 class Platform(StrEnum):
