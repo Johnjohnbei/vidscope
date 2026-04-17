@@ -19,6 +19,7 @@ from vidscope import __version__
 from vidscope.cli.commands import (
     add_command,
     cookies_app,
+    creator_app,
     doctor_command,
     list_command,
     mcp_app,
@@ -95,3 +96,4 @@ app.command(
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(watch_app, name="watch")
 app.add_typer(cookies_app, name="cookies")
+app.add_typer(creator_app, name="creator")
