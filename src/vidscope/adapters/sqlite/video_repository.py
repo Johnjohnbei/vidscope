@@ -149,6 +149,15 @@ class VideoRepositorySQLite:
         )
         return [_row_to_video(row) for row in rows]
 
+    def count_by_creator(self, creator_id: CreatorId) -> int:
+        """Return the total number of videos linked to ``creator_id``."""
+        total = self._conn.execute(
+            select(func.count())
+            .select_from(videos_table)
+            .where(videos_table.c.creator_id == int(creator_id))
+        ).scalar()
+        return int(total or 0)
+
     def count(self) -> int:
         total = self._conn.execute(
             select(func.count()).select_from(videos_table)

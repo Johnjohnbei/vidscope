@@ -125,6 +125,10 @@ class VideoRepository(Protocol):
         """
         ...
 
+    def count_by_creator(self, creator_id: CreatorId) -> int:
+        """Return the total number of videos linked to ``creator_id``."""
+        ...
+
     def count(self) -> int:
         """Return the total number of videos in the store."""
         ...

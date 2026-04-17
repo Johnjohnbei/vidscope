@@ -57,10 +57,7 @@ class ListCreatorVideosUseCase:
                 return ListCreatorVideosResult(found=False)
 
             videos = uow.videos.list_by_creator(creator.id, limit=limit)
-            # Count: list full set to get total — we cap list_by_creator
-            # at limit for the page, fetch count separately via large limit
-            all_videos = uow.videos.list_by_creator(creator.id, limit=10000)
-            total = len(all_videos)
+            total = uow.videos.count_by_creator(creator.id)
 
         return ListCreatorVideosResult(
             found=True,
