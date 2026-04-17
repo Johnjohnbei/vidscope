@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from mcp.server.fastmcp.exceptions import ToolError
 
 from vidscope.domain import Creator, Platform
 from vidscope.domain.values import PlatformUserId
@@ -48,22 +50,19 @@ def _insert_creator(
         return uow.creators.upsert(creator)
 
 
-def _get_tool(container: Container, tool_name: str):  # type: ignore[no-untyped-def]
-    """Extract a tool function from the FastMCP server instance."""
-    mcp = build_mcp_server(container)
-    # FastMCP stores tools in _tool_manager._tools dict keyed by name
-    tools = mcp._tool_manager._tools
-    assert tool_name in tools, (
-        f"Tool '{tool_name}' not found. Available: {list(tools.keys())}"
-    )
-    return tools[tool_name].fn
+def _call_tool(container: Container, name: str, args: dict) -> dict:  # type: ignore[no-untyped-def]
+    """Call an MCP tool via the public call_tool API and return the result dict."""
+    server = build_mcp_server(container)
+    _, structured = asyncio.run(server.call_tool(name, args))
+    assert isinstance(structured, dict)
+    return structured
 
 
 class TestVidscopeGetCreatorTool:
     def test_found_returns_creator_dict(self, container: Container) -> None:
         _insert_creator(container, "@alice")
-        tool_fn = _get_tool(container, "vidscope_get_creator")
-        result = tool_fn(handle="@alice", platform="youtube")
+        result = _call_tool(container, "vidscope_get_creator",
+                            {"handle": "@alice", "platform": "youtube"})
 
         assert result["found"] is True
         assert "creator" in result
@@ -71,43 +70,43 @@ class TestVidscopeGetCreatorTool:
         assert result["creator"]["platform"] == "youtube"
 
     def test_not_found_returns_found_false(self, container: Container) -> None:
-        tool_fn = _get_tool(container, "vidscope_get_creator")
-        result = tool_fn(handle="@ghost", platform="youtube")
+        result = _call_tool(container, "vidscope_get_creator",
+                            {"handle": "@ghost", "platform": "youtube"})
 
         assert result["found"] is False
         assert result["handle"] == "@ghost"
 
     def test_creator_dict_includes_follower_count(self, container: Container) -> None:
         _insert_creator(container, "@rich", follower_count=100000, platform_user_id="rich")
-        tool_fn = _get_tool(container, "vidscope_get_creator")
-        result = tool_fn(handle="@rich", platform="youtube")
+        result = _call_tool(container, "vidscope_get_creator",
+                            {"handle": "@rich", "platform": "youtube"})
 
         assert result["found"] is True
         assert result["creator"]["follower_count"] == 100000
 
     def test_invalid_platform_raises_value_error(self, container: Container) -> None:
-        tool_fn = _get_tool(container, "vidscope_get_creator")
-        with pytest.raises(ValueError, match="unknown platform"):
-            tool_fn(handle="@alice", platform="snapchat")
+        # FastMCP wraps ValueError raised inside tool functions as ToolError.
+        with pytest.raises(ToolError, match="unknown platform"):
+            _call_tool(container, "vidscope_get_creator",
+                       {"handle": "@alice", "platform": "snapchat"})
 
     def test_default_platform_is_youtube(self, container: Container) -> None:
         _insert_creator(container, "@yt", Platform.YOUTUBE, "yt")
-        tool_fn = _get_tool(container, "vidscope_get_creator")
         # Call without platform arg — defaults to youtube
-        result = tool_fn(handle="@yt")
+        result = _call_tool(container, "vidscope_get_creator", {"handle": "@yt"})
         assert result["found"] is True
 
     def test_tiktok_platform(self, container: Container) -> None:
         _insert_creator(container, "@tt", Platform.TIKTOK, "tt_uid")
-        tool_fn = _get_tool(container, "vidscope_get_creator")
-        result = tool_fn(handle="@tt", platform="tiktok")
+        result = _call_tool(container, "vidscope_get_creator",
+                            {"handle": "@tt", "platform": "tiktok"})
         assert result["found"] is True
         assert result["creator"]["platform"] == "tiktok"
 
     def test_creator_dict_has_all_fields(self, container: Container) -> None:
         _insert_creator(container, "@full", platform_user_id="full")
-        tool_fn = _get_tool(container, "vidscope_get_creator")
-        result = tool_fn(handle="@full", platform="youtube")
+        result = _call_tool(container, "vidscope_get_creator",
+                            {"handle": "@full", "platform": "youtube"})
 
         creator = result["creator"]
         expected_keys = {
@@ -118,6 +117,7 @@ class TestVidscopeGetCreatorTool:
         assert expected_keys.issubset(set(creator.keys()))
 
     def test_tool_registered_in_build_mcp_server(self, container: Container) -> None:
-        mcp = build_mcp_server(container)
-        tool_names = list(mcp._tool_manager._tools.keys())
+        server = build_mcp_server(container)
+        tools = asyncio.run(server.list_tools())
+        tool_names = {tool.name for tool in tools}
         assert "vidscope_get_creator" in tool_names
