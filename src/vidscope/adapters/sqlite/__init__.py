@@ -7,6 +7,7 @@ SQLAlchemy Core over SQLite with FTS5.
 from __future__ import annotations
 
 from vidscope.adapters.sqlite.analysis_repository import AnalysisRepositorySQLite
+from vidscope.adapters.sqlite.creator_repository import CreatorRepositorySQLite
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
 from vidscope.adapters.sqlite.pipeline_run_repository import (
     PipelineRunRepositorySQLite,
@@ -25,6 +26,7 @@ from vidscope.adapters.sqlite.watch_refresh_repository import (
 
 __all__ = [
     "AnalysisRepositorySQLite",
+    "CreatorRepositorySQLite",
     "FrameRepositorySQLite",
     "PipelineRunRepositorySQLite",
     "SearchIndexSQLite",
