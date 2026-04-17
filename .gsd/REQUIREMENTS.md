@@ -136,6 +136,226 @@ This file is the explicit capability and coverage contract for the project.
 - Validation: S02 shipped: SuggestRelatedUseCase with Jaccard keyword overlap (pure Python, zero deps) + `vidscope suggest <id>` CLI + `vidscope_suggest_related` MCP tool. Validated by 11 unit tests covering happy path + 6 edge cases + score ordering, 3 MCP tool unit tests, 2 subprocess integration tests. Score = |source_kw ∩ candidate_kw| / |source_kw ∪ candidate_kw|. Semantic embeddings (R026) remain deferred.
 - Notes: Promoted from deferred to active at M002 start. First version uses keyword overlap from the heuristic analyzer (R010) — no embeddings yet (R026 remains deferred). Exposed via both CLI (vidscope suggest) and MCP tool.
 
+### R040 — Every ingested video is linked to a `Creator` entity carrying platform, stable platform_user_id, canonical handle, display name, profile URL, follower count (when exposed), avatar URL, and verification status.
+- Class: core-capability
+- Status: active
+- Description: Creator becomes a first-class domain entity with its own table. `videos.creator_id` is a FK; `videos.author` remains as a denormalised cache for backward compatibility. yt-dlp already exposes `uploader`, `uploader_id`, `uploader_url`, `channel_follower_count`, `uploader_thumbnail` — no new external dependency.
+- Why it matters: Without a stable creator identity, every subsequent data-quality improvement degrades: mention attribution (R043), creator-level velocity (R050), collections-by-creator (R057), creator-overlap suggestion (already promised in R023 but currently approximated by the author string). This is the structural prerequisite for M007–M011.
+- Source: inferred + user
+- Primary owning slice: M006/S01
+- Supporting slices: M006/S02, M006/S03
+- Validation: not started
+- Notes: Backfill script must be lossless and reversible. Same handle across platforms is *not* resolved to a single identity in M006 (explicit out-of-scope).
+
+### R041 — CLI and MCP expose the creator library: `vidscope creator show <handle>`, `vidscope creator list [--platform] [--min-followers]`, `vidscope creator videos <handle>`, MCP tool `vidscope_get_creator`.
+- Class: primary-user-loop
+- Status: active
+- Description: User (or agent) can enumerate known creators, see their metadata, and browse their video catalogue in the local library.
+- Why it matters: Without a CLI surface, the creators table is invisible. This unblocks basic veille workflows (review a creator's last N videos) before the heavier facet-search ships in M011.
+- Source: user
+- Primary owning slice: M006/S03
+- Supporting slices: none
+- Validation: not started
+- Notes: MCP tool mirrors CLI semantics exactly.
+
+### R042 — Migration from the denormalised `videos.author` to `videos.creator_id` is lossless and reversible.
+- Class: quality-attribute
+- Status: active
+- Description: A backfill script reads every existing video row, derives or re-fetches creator metadata, upserts into `creators`, and sets `videos.creator_id`. A reverse script can drop `creator_id` and keep the row valid via the preserved `videos.author`.
+- Why it matters: Users have existing libraries from M001–M005. Losing data during migration would destroy trust. Reversibility gives a safety net if M006 ships with bugs.
+- Source: inferred
+- Primary owning slice: M006/S01
+- Supporting slices: none
+- Validation: not started
+- Notes: Script is exercised in tests against fixture DBs with N=0, N=1, N=100, and N=1 with missing uploader data.
+
+### R043 — Captions/descriptions, hashtags, mentions are captured verbatim at ingest and stored as queryable side tables.
+- Class: core-capability
+- Status: active
+- Description: `video_metadata.description` holds the raw platform description verbatim. Hashtags and @mentions are extracted (via regex for robustness, not via yt-dlp-only fields since those vary by platform) into `hashtags` and `mentions` tables with FK to video.
+- Why it matters: Caption + hashtags + mentions carry massive qualitative signal (intent, niche, sponsor disclosure, target audience). Today they're discarded. This single requirement probably delivers more downstream value than any other in this wave.
+- Source: user
+- Primary owning slice: M007/S01
+- Supporting slices: M007/S03
+- Validation: not started
+- Notes: Platform differences handled in `YtdlpDownloader`; missing fields = NULL, never a synthesised placeholder.
+
+### R044 — URLs embedded in captions and transcripts are extracted, normalised, and stored with their source origin (`caption` / `transcript` / `ocr`) and an optional position marker.
+- Class: core-capability
+- Status: active
+- Description: A `LinkExtractor` port with a `RegexLinkExtractor` adapter scans caption (at ingest) and transcript (after TranscribeStage) for URLs, including bare domains, markdown-style links, short URLs (bit.ly / t.co), and IDN. Normalisation strips fragments, sorts query params, drops `utm_*`, preserves path case. `source` column documents where the URL was found.
+- Why it matters: Affiliate links, link-in-bio, shop URLs, reference material — the most actionable output of a veille loop. Finding them manually is tedious and lossy; regex extraction at ingest-time is free.
+- Source: user
+- Primary owning slice: M007/S02
+- Supporting slices: M007/S03, M008/S02 (OCR-sourced URLs feed the same table)
+- Validation: not started
+- Notes: A 100+ fixture corpus in `tests/fixtures/link_corpus.json` is the non-negotiable quality gate.
+
+### R045 — Music track and artist (when platform exposes them) are captured per video.
+- Class: core-capability
+- Status: active
+- Description: `music_tracks` table keyed by video_id stores `track_name`, `artist_name`, `is_original_sound`. TikTok exposes these reliably, Instagram often, YouTube rarely.
+- Why it matters: Sound is *the* TikTok signal — "what sound is trending" drives 60%+ of short-form virality. Without it the platform-specific half of VidScope's veille is blind.
+- Source: user
+- Primary owning slice: M007/S01
+- Supporting slices: M007/S03
+- Validation: not started
+- Notes: When yt-dlp returns null, we store null — no synthesised values.
+
+### R046 — `vidscope search` accepts facet flags `--hashtag`, `--mention`, `--has-link`, `--music-track`; new command `vidscope links <id>` lists extracted URLs.
+- Class: primary-user-loop
+- Status: active
+- Description: Facetted search over the new side tables + a dedicated listing command for the link inventory of a single video. Composable with existing FTS5 query.
+- Why it matters: Without CLI surface, the M007 data is silent. Facets make the new data immediately useful.
+- Source: user
+- Primary owning slice: M007/S04
+- Supporting slices: M011/S03 (consolidated facet-search)
+- Validation: not started
+- Notes: Full facet set lands in M011/S03; M007/S04 ships the subset scoped to this requirement.
+
+### R047 — Every extracted frame is OCR'd locally and its text stored in a `frame_texts` table; OCR-sourced URLs feed the `links` table with `source='ocr'`.
+- Class: core-capability
+- Status: active
+- Description: `OcrEngine` port with `RapidOcrEngine` adapter (ONNX CPU, FR+EN) runs after `FramesStage` inside a new `VisualIntelligenceStage`. Extracted text is persisted per-frame; the same `LinkExtractor` from M007 runs over OCR text to discover on-screen URLs.
+- Why it matters: "Link in bio", promo codes, on-screen @handles and product names live in pixels, not audio. OCR is the only way to capture them. Local + zero-cost maintains D010.
+- Source: user
+- Primary owning slice: M008/S01
+- Supporting slices: M008/S02
+- Validation: not started
+- Notes: `rapidocr-onnxruntime` is an optional extra (`vidscope[vision]`); if missing, VisualIntelligenceStage emits SKIPPED and the rest of the pipeline stays green.
+
+### R048 — A canonical thumbnail is materialised at `videos/{id}/thumb.jpg` for every ingested video.
+- Class: quality-attribute
+- Status: active
+- Description: After FramesStage, the frame closest to `duration / 3` is copied to a stable storage key `videos/{id}/thumb.jpg`. `videos.thumbnail_key` points to it.
+- Why it matters: Every downstream surface (exports, future UI, agent preview) needs one representative image. Today callers must pick among 30 frames and guess.
+- Source: inferred
+- Primary owning slice: M008/S03
+- Supporting slices: M011/S04 (exports reference thumbnail_key)
+- Validation: not started
+- Notes: Choice of `duration / 3` is a pragmatic heuristic (avoids intro logos and end-cards); tunable later if a better heuristic emerges.
+
+### R049 — Every video is classified as `talking_head`, `broll`, `mixed`, or `unknown` based on per-frame face-count heuristic.
+- Class: quality-attribute
+- Status: active
+- Description: OpenCV haarcascade counts faces per frame. ≥ 40% frames with ≥ 1 face → talking_head; 0 faces on any frame → broll; else mixed. `unknown` when fewer than 3 frames exist.
+- Why it matters: Content shape is a strong predictor of style and relevance for veille filters ("only talking-head tutorials", "only B-roll product shots"). Cheap to compute, no ML beyond haarcascade (which ships free with OpenCV).
+- Source: inferred
+- Primary owning slice: M008/S03
+- Supporting slices: M011/S03 (facet)
+- Validation: not started
+- Notes: No face recognition or identity; only a boolean per frame.
+
+### R050 — Engagement stats are stored as an append-only time-series in `video_stats` (view/like/comment/share/save counts timestamped).
+- Class: core-capability
+- Status: active
+- Description: Every probe via `StatsProbe` appends a new row with `captured_at`. The repository rejects UPDATE. Derived metrics (velocity, engagement_rate, viral_coefficient) computed on read in `domain/metrics.py`.
+- Why it matters: Velocity is *the* trending signal. A single-snapshot schema makes velocity impossible. D031 pins the append-only contract.
+- Source: user
+- Primary owning slice: M009/S01
+- Supporting slices: M009/S02, M009/S03
+- Validation: not started
+- Notes: Schema is trivially forward-compatible (new metrics = new nullable columns).
+
+### R051 — `vidscope refresh-stats` and `vidscope watch refresh` re-probe existing videos for fresh stats without re-ingesting media.
+- Class: primary-user-loop
+- Status: active
+- Description: `vidscope refresh-stats <id|--all|--since>` probes a subset and appends rows. `vidscope watch refresh` additionally iterates all videos of watched creators and runs the same probe. Media is never re-downloaded.
+- Why it matters: Keeps the library's velocity view current with a single command the user can schedule via cron. Reuses the M005 probe helper (metadata-only yt-dlp call).
+- Source: user
+- Primary owning slice: M009/S02
+- Supporting slices: M009/S03
+- Validation: not started
+- Notes: Per-video error isolation — one failing URL doesn't abort the batch.
+
+### R052 — `vidscope trending --since <window>` ranks videos in the library by computed velocity over the window.
+- Class: differentiator
+- Status: active
+- Description: Queries the time-series, computes windowed velocity per video, returns top N sorted. Flags `--platform`, `--creator`, `--min-velocity` compose.
+- Why it matters: Turns the library into an active research surface — "what from my watchlist is actually accelerating right now?" This is the headline feature of M009 for the user.
+- Source: user
+- Primary owning slice: M009/S04
+- Supporting slices: M011/S03
+- Validation: not started
+- Notes: Sorted by absolute velocity by default; a `--sort engagement_rate|viral_coefficient` flag can be added.
+
+### R053 — Analysis carries a score vector (`information_density`, `actionability`, `novelty`, `production_quality`, `sentiment`) plus `is_sponsored` (bool + confidence) and `content_type` enum.
+- Class: core-capability
+- Status: active
+- Description: Extends the existing `Analysis` entity. Heuristic V2 produces all fields from transcript alone; LLM V2 providers emit the full schema via JSON output. Migration is additive-compatible (D032).
+- Why it matters: Single-score opacity blocks every qualitative filter. A vector plus typed flags lets the user say "only tutorials with actionability > 70 and not sponsored".
+- Source: user
+- Primary owning slice: M010/S01
+- Supporting slices: M010/S02, M010/S03
+- Validation: not started
+- Notes: A golden-set fixture (40 hand-labelled transcripts) is the quality gate: heuristic ≥ 70% match, LLM ≥ 85%.
+
+### R054 — Topic tagging uses a controlled vertical taxonomy loaded from `config/taxonomy.yaml`.
+- Class: quality-attribute
+- Status: active
+- Description: `TaxonomyCatalog` port + `YamlTaxonomy` adapter. Verticals (~12: tech, beauty, fitness, finance, food, …) mapped to keyword sets. Heuristic V2 matches by keyword; LLM V2 picks from the controlled list.
+- Why it matters: Freeform topic strings don't aggregate across videos — "fitness" vs "fit" vs "workout" never group. Controlled taxonomy unlocks cross-video aggregation and facet search.
+- Source: inferred
+- Primary owning slice: M010/S01
+- Supporting slices: M010/S02, M010/S03, M011/S03
+- Validation: not started
+- Notes: Taxonomy is edited by hand for v1; automatic expansion is future work.
+
+### R055 — Every analysis row carries a `reasoning` field explaining the per-dimension scores in natural language.
+- Class: quality-attribute
+- Status: active
+- Description: 2–3 sentences documenting why the analyzer assigned those scores. Heuristic V2 concatenates structured rationales; LLM V2 generates a free-form explanation.
+- Why it matters: Opaque scores kill trust. Reasoning lets the user audit and calibrate; lets future analyzer revisions compare explanations side-by-side.
+- Source: user
+- Primary owning slice: M010/S01
+- Supporting slices: M010/S04 (`vidscope explain`)
+- Validation: not started
+- Notes: Truncated at 500 chars to keep prompts bounded.
+
+### R056 — Videos carry a tracking record with `status ENUM {new, reviewed, saved, actioned, ignored, archived}`, `starred bool`, and free-form `notes TEXT`.
+- Class: primary-user-loop
+- Status: active
+- Description: `video_tracking` table 1:1 with videos. Set via `vidscope review <id> --status saved --star --note "..."`. Re-ingest never touches this table (D033).
+- Why it matters: Without a personal workflow state, VidScope is read-only. This single table is what turns the library into an actionable veille system.
+- Source: user
+- Primary owning slice: M011/S01
+- Supporting slices: M011/S03
+- Validation: not started
+- Notes: Documented state machine: `new → reviewed → {saved, ignored}`; `saved → actioned`; any → `archived`.
+
+### R057 — Videos can carry multiple tags and belong to multiple named collections.
+- Class: primary-user-loop
+- Status: active
+- Description: `tags` table (global unique) + `video_tags` M:N; `collections` table (global unique) + `collection_items` M:N. CLI: `vidscope tag add/remove/list`, `vidscope collection create/add/remove/list/show`.
+- Why it matters: Tags are the lightweight personal taxonomy on top of the M010 controlled vocabulary. Collections are the persistence layer for project-scoped veille (e.g. "competitors Q2").
+- Source: user
+- Primary owning slice: M011/S02
+- Supporting slices: M011/S03, M011/S04
+- Validation: not started
+- Notes: No nesting in v1; collections are flat. Nested collections are additive later.
+
+### R058 — `vidscope search` accepts the full facet set: `--creator --platform --status --starred --tag --collection --has-link --content-type --min-score --min-actionability --since --until` plus the existing query text.
+- Class: primary-user-loop
+- Status: active
+- Description: Dynamic query builder in `search_repository.py` composes clauses via parameterised SQL (SQL-injection-safe, fuzzed). AND semantics across facets. MCP tool exposes the same surface.
+- Why it matters: This is the consolidation of every qualitative field collected across M006–M010. Without it each milestone's data stays siloed.
+- Source: user
+- Primary owning slice: M011/S03
+- Supporting slices: none
+- Validation: not started
+- Notes: Combinatorial test matrix samples ≥ 50 facet combinations; injection fuzz guards the builder.
+
+### R059 — `vidscope export --format json|markdown|csv [--collection NAME] [--query ...] [--out PATH]` produces downstream-ingestible exports (Notion / Obsidian / Airtable).
+- Class: operability
+- Status: active
+- Description: Three exporters share an `Exporter` port. JSON schema versioned (`export.v1`) and frozen. Markdown = one file per video with YAML frontmatter (Obsidian). CSV = flat tabular (Airtable / Excel / Sheets).
+- Why it matters: Personal tool with no UI → export is the only integration surface. Three formats cover 95% of downstream tools without building custom integrations.
+- Source: user
+- Primary owning slice: M011/S04
+- Supporting slices: none
+- Validation: not started
+- Notes: Schema v1 frozen in `docs/export-schema.v1.md`; breaking changes require a v2 exporter alongside.
+
 ## Validated
 
 ### R021 — Declare a public Instagram / TikTok / YouTube account as "watched"; on demand (`vidscope watch refresh`) or via cron, the tool detects new videos from watched accounts and pushes them through the ingestion pipeline automatically.
@@ -254,10 +474,33 @@ This file is the explicit capability and coverage contract for the project.
 | R030 | anti-feature | out-of-scope | none | none | n/a |
 | R031 | anti-feature | out-of-scope | none | none | n/a |
 | R032 | constraint | out-of-scope | none | none | n/a |
+| R040 | core-capability | active | M006/S01 | M006/S02, M006/S03 | not started |
+| R041 | primary-user-loop | active | M006/S03 | none | not started |
+| R042 | quality-attribute | active | M006/S01 | none | not started |
+| R043 | core-capability | active | M007/S01 | M007/S03 | not started |
+| R044 | core-capability | active | M007/S02 | M007/S03, M008/S02 | not started |
+| R045 | core-capability | active | M007/S01 | M007/S03 | not started |
+| R046 | primary-user-loop | active | M007/S04 | M011/S03 | not started |
+| R047 | core-capability | active | M008/S01 | M008/S02 | not started |
+| R048 | quality-attribute | active | M008/S03 | M011/S04 | not started |
+| R049 | quality-attribute | active | M008/S03 | M011/S03 | not started |
+| R050 | core-capability | active | M009/S01 | M009/S02, M009/S03 | not started |
+| R051 | primary-user-loop | active | M009/S02 | M009/S03 | not started |
+| R052 | differentiator | active | M009/S04 | M011/S03 | not started |
+| R053 | core-capability | active | M010/S01 | M010/S02, M010/S03 | not started |
+| R054 | quality-attribute | active | M010/S01 | M010/S02, M010/S03, M011/S03 | not started |
+| R055 | quality-attribute | active | M010/S01 | M010/S04 | not started |
+| R056 | primary-user-loop | active | M011/S01 | M011/S03 | not started |
+| R057 | primary-user-loop | active | M011/S02 | M011/S03, M011/S04 | not started |
+| R058 | primary-user-loop | active | M011/S03 | none | not started |
+| R059 | operability | active | M011/S04 | none | not started |
 
 ## Coverage Summary
 
-- Active requirements: 12
-- Mapped to slices: 12
+- Active requirements (shipped): 12 (R001–R010, R020, R023)
+- Active requirements (planned M006–M011): 20 (R040–R059)
+- Mapped to slices: 32 / 32
 - Validated: 4 (R021, R022, R024, R025)
+- Deferred: 1 (R026)
+- Out of scope: 3 (R030, R031, R032)
 - Unmapped active requirements: 0
