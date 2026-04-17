@@ -1,8 +1,8 @@
 # GSD State
 
 **Last Completed Milestone:** M005: Cookies UX improvements
-**Active Slice:** None
-**Phase:** M001–M005 shipped · M006–M011 scoped, not yet started
+**Active Slice:** M006/S01 (planned — ready to execute)
+**Phase:** M001–M005 shipped · M006/S01 planned (4 plans, 15 tasks) · M006/S02–S03 + M007–M011 scoped
 **Requirements Status:** 12 active (M001–M005) · 20 planned (M006–M011, R040–R059) · 4 validated · 1 deferred · 3 out of scope
 
 ## Milestone Registry
@@ -25,4 +25,10 @@
 - None
 
 ## Next Action
-Start **M006/S01** (Creator domain entity + SQLite adapter + migration + backfill). Roadmap in `.gsd/milestones/M006/M006-ROADMAP.md`. Recommended command: `/gsd-discuss-phase M006/S01` then `/gsd-plan-phase M006/S01`.
+Execute **M006/S01** — plans verified (0 blockers, 6 minor warnings). Four plans in `.gsd/milestones/M006/slices/S01/`:
+- `S01-P01-PLAN.md` (Wave 1, 4 tasks): domain entity + ProbeResult port extension
+- `S01-P02-PLAN.md` (Wave 2, 3 tasks): CreatorRepository Protocol + creators table + FK
+- `S01-P03-PLAN.md` (Wave 3, 4 tasks): SqlCreatorRepository + UoW + write-through cache
+- `S01-P04-PLAN.md` (Wave 4, 4 tasks): YtdlpDownloader.probe populé + backfill script + verify-s01.sh
+
+Recommended command: `/gsd-execute-phase M006/S01`.
