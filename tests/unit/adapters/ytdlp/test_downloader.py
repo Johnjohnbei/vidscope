@@ -893,7 +893,7 @@ class TestProbeCreatorExtraction:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Core creator fields are extracted from a full info_dict."""
-        from vidscope.ports import ProbeResult, ProbeStatus
+        from vidscope.ports import ProbeStatus
 
         info: dict[str, Any] = {
             "id": "UC_abc",

@@ -288,9 +288,7 @@ class YtdlpDownloader:
         try:
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=False)
-        except DownloadError as exc:
-            return _translate_probe_error(exc, url)
-        except ExtractorError as exc:
+        except (DownloadError, ExtractorError) as exc:
             return _translate_probe_error(exc, url)
         except Exception as exc:
             return ProbeResult(
@@ -299,19 +297,13 @@ class YtdlpDownloader:
                 detail=f"unexpected yt-dlp failure: {exc}",
             )
 
-        if info is None:
+        if info is None or not isinstance(info, dict):
+            # None → yt-dlp found nothing; non-dict → unexpected extractor shape.
+            # Both cases map to NOT_FOUND (no usable metadata available).
             return ProbeResult(
                 status=ProbeStatus.NOT_FOUND,
                 url=url,
                 detail="yt-dlp returned no metadata",
-            )
-
-        if not isinstance(info, dict):
-            # Safety: info might be an unexpected type on some extractors
-            return ProbeResult(
-                status=ProbeStatus.OK,
-                url=url,
-                detail="resolved but info dict not available",
             )
 
         title = info.get("title")
