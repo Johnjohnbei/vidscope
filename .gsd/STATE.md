@@ -1,8 +1,8 @@
 # GSD State
 
 **Last Completed Milestone:** M005: Cookies UX improvements
-**Active Slice:** M006/S03 (ready to execute — 3 plans, 2 waves)
-**Phase:** M001–M005 shipped · M006/S01 complete (4 plans) · M006/S02 complete (3 plans, 698 tests green) · M006/S03 planned (3 plans) · M007–M011 scoped
+**Active Slice:** M006/S03 complete (3 plans, 735 tests green)
+**Phase:** M001–M005 shipped · M006/S01 complete (4 plans) · M006/S02 complete (3 plans, 698 tests green) · M006/S03 complete (3 plans, 735 tests green) · M007–M011 scoped
 **Requirements Status:** 12 active (M001–M005) · 20 planned (M006–M011, R040–R059) · 4 validated · 1 deferred · 3 out of scope
 
 ## Milestone Registry
@@ -25,5 +25,6 @@
 - None
 
 ## Next Action
-Execute **M006/S03** (CLI + MCP surfaces) — 3 plans, 2 waves (P01 Wave 1 ; P02+P03 Wave 2 en parallèle).
-Recommended command: `/gsd-execute-phase M006/S03`.
+M006 complete — toutes les slices S01/S02/S03 livrées. Creator-as-first-class-entity opérationnel.
+Prochaine étape : démarrer M007 (Rich content metadata).
+Recommended command: `/gsd-discuss-phase M007`.
