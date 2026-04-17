@@ -67,6 +67,7 @@ class Video:
     view_count: int | None = None
     media_key: str | None = None
     created_at: datetime | None = None
+    creator_id: CreatorId | None = None
 
     def is_ingested(self) -> bool:
         """Return ``True`` once the ingest stage has stored a media file."""

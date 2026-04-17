@@ -194,6 +194,11 @@ def _row_to_video(row: Any) -> Video:
         view_count=data.get("view_count"),
         media_key=data.get("media_key"),
         created_at=_ensure_utc(data.get("created_at")),
+        creator_id=(
+            CreatorId(int(data["creator_id"]))
+            if data.get("creator_id") is not None
+            else None
+        ),
     )
 
 

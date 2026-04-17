@@ -68,3 +68,13 @@ def show_command(
             )
         else:
             console.print("[dim]analysis: none yet[/dim]")
+
+        if result.creator is not None:
+            c = result.creator
+            followers = f"{c.follower_count:,}" if c.follower_count else "-"
+            console.print(
+                f"[bold]creator:[/bold] {c.handle or c.display_name or '-'} "
+                f"([dim]{c.platform.value}[/dim], {followers} followers)"
+            )
+        else:
+            console.print("[dim]creator: unknown[/dim]")

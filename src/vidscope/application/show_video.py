@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vidscope.domain import Analysis, Frame, Transcript, Video, VideoId
+from vidscope.domain import Analysis, Creator, Frame, Transcript, Video, VideoId
 from vidscope.ports import UnitOfWorkFactory
 
 __all__ = ["ShowVideoResult", "ShowVideoUseCase"]
@@ -23,6 +23,7 @@ class ShowVideoResult:
     transcript: Transcript | None = None
     frames: tuple[Frame, ...] = ()
     analysis: Analysis | None = None
+    creator: Creator | None = None
 
 
 class ShowVideoUseCase:
@@ -45,6 +46,9 @@ class ShowVideoUseCase:
             transcript = uow.transcripts.get_for_video(video.id)  # type: ignore[arg-type]
             frames = tuple(uow.frames.list_for_video(video.id))  # type: ignore[arg-type]
             analysis = uow.analyses.get_latest_for_video(video.id)  # type: ignore[arg-type]
+            creator: Creator | None = None
+            if video.creator_id is not None:
+                creator = uow.creators.get(video.creator_id)
 
         return ShowVideoResult(
             found=True,
@@ -52,4 +56,5 @@ class ShowVideoUseCase:
             transcript=transcript,
             frames=frames,
             analysis=analysis,
+            creator=creator,
         )
