@@ -129,3 +129,98 @@ class TestDirectConnectionUsage:
                 Platform.YOUTUBE, PlatformId("direct")
             )
             assert found is not None
+
+
+class TestWriteThroughAuthor:
+    """D-03 write-through cache regression: videos.author tracks
+    creators.display_name when upsert_by_platform_id(video, creator=...)
+    is used. Application code must NEVER write videos.author directly.
+    """
+
+    def test_upsert_with_creator_copies_display_name_to_author(
+        self, engine: Engine
+    ) -> None:
+        from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+        from vidscope.domain import Creator, PlatformUserId
+
+        with SqliteUnitOfWork(engine) as uow:
+            creator = uow.creators.upsert(
+                Creator(
+                    platform=Platform.YOUTUBE,
+                    platform_user_id=PlatformUserId("UC_WT"),
+                    display_name="Display A",
+                )
+            )
+            video = uow.videos.upsert_by_platform_id(
+                _sample_video(
+                    platform_id=PlatformId("wt_v1"),
+                    author="stale-will-be-overwritten",
+                ),
+                creator=creator,
+            )
+            assert video.author == "Display A"
+            assert video.id is not None
+
+    def test_rename_creator_propagates_to_videos_author(
+        self, engine: Engine
+    ) -> None:
+        """The regression guard mandated by CONTEXT.md §specifics."""
+        from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+        from vidscope.domain import Creator, PlatformUserId
+
+        with SqliteUnitOfWork(engine) as uow:
+            creator_a = uow.creators.upsert(
+                Creator(
+                    platform=Platform.YOUTUBE,
+                    platform_user_id=PlatformUserId("UC_RN"),
+                    display_name="A",
+                )
+            )
+            uow.videos.upsert_by_platform_id(
+                _sample_video(platform_id=PlatformId("rn_v1")),
+                creator=creator_a,
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get_by_platform_id(
+                Platform.YOUTUBE, PlatformId("rn_v1")
+            )
+            assert found is not None
+            assert found.author == "A"
+
+            # Rename the creator
+            creator_b = uow.creators.upsert(
+                Creator(
+                    platform=Platform.YOUTUBE,
+                    platform_user_id=PlatformUserId("UC_RN"),
+                    display_name="B",
+                )
+            )
+            uow.videos.upsert_by_platform_id(
+                _sample_video(platform_id=PlatformId("rn_v1")),
+                creator=creator_b,
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get_by_platform_id(
+                Platform.YOUTUBE, PlatformId("rn_v1")
+            )
+            assert found is not None
+            assert found.author == "B"  # write-through propagated
+
+    def test_upsert_without_creator_preserves_existing_author(
+        self, engine: Engine
+    ) -> None:
+        """M001–M005 callers still work unchanged (kwarg defaults to
+        None → author is taken from the video argument as-is)."""
+        from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+
+        with SqliteUnitOfWork(engine) as uow:
+            v = uow.videos.upsert_by_platform_id(
+                _sample_video(
+                    platform_id=PlatformId("legacy_v1"),
+                    author="Legacy Author",
+                ),
+                # no creator kwarg
+            )
+            assert v.author == "Legacy Author"
