@@ -43,6 +43,7 @@ from sqlalchemy import (
     Engine,
     Float,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     String,
@@ -55,6 +56,7 @@ from sqlalchemy.engine import Connection
 
 __all__ = [
     "analyses",
+    "creators",
     "frames",
     "init_db",
     "metadata",
@@ -92,6 +94,12 @@ videos = Table(
     Column("view_count", Integer, nullable=True),
     Column("media_key", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    Column(
+        "creator_id",
+        Integer,
+        ForeignKey("creators.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
 )
 
 transcripts = Table(
@@ -194,6 +202,43 @@ watch_refreshes = Table(
 )
 
 
+# M006: creators registry
+creators = Table(
+    "creators",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("platform", String(32), nullable=False),
+    Column("platform_user_id", String(255), nullable=False),
+    Column("handle", String(255), nullable=True),          # non-unique (D-01)
+    Column("display_name", Text, nullable=True),
+    Column("profile_url", Text, nullable=True),
+    Column("avatar_url", Text, nullable=True),             # URL string only (D-05)
+    Column("follower_count", Integer, nullable=True),      # scalar (D-04)
+    Column("is_verified", Boolean, nullable=True),
+    Column("is_orphan", Boolean, nullable=False, default=False),
+    Column("first_seen_at", DateTime(timezone=True), nullable=True),
+    Column("last_seen_at", DateTime(timezone=True), nullable=True),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utc_now,
+    ),
+    # Compound UNIQUE on (platform, platform_user_id) — D-01 canonical
+    # identity. Same uploader_id on different platforms is allowed
+    # (no cross-platform identity resolution in M006).
+    UniqueConstraint(
+        "platform",
+        "platform_user_id",
+        name="uq_creators_platform_user_id",
+    ),
+)
+
+# Indexes on both sides of the creator<->video relationship.
+Index("idx_creators_handle", creators.c.platform, creators.c.handle)
+Index("idx_videos_creator_id", videos.c.creator_id)
+
+
 # ---------------------------------------------------------------------------
 # FTS5 virtual table DDL
 # ---------------------------------------------------------------------------
@@ -217,16 +262,46 @@ def init_db(engine: Engine) -> None:
 
     Safe to call on every startup — :meth:`MetaData.create_all` uses
     ``CREATE TABLE IF NOT EXISTS`` under the hood, and the FTS5 DDL
-    guards itself the same way.
+    plus the ``_ensure_videos_creator_id`` helper both guard
+    themselves against double-execution on upgraded DBs.
     """
     metadata.create_all(engine)
     with engine.begin() as conn:
         _create_fts5(conn)
+        _ensure_videos_creator_id(conn)
 
 
 def _create_fts5(conn: Connection) -> None:
     """Execute the FTS5 virtual-table DDL on an existing connection."""
     conn.execute(text(_FTS5_CREATE_SQL))
+
+
+def _ensure_videos_creator_id(conn: Connection) -> None:
+    """Add ``videos.creator_id`` on upgraded databases. Idempotent.
+
+    M006/S01 adds a nullable FK column ``videos.creator_id``. On fresh
+    installs the Core ``metadata.create_all`` path declares the column
+    inline (see the ``videos`` Table definition above). On pre-M006
+    databases the ``videos`` table already exists, so ``create_all``
+    is a no-op — we must explicitly ALTER it.
+
+    SQLite supports ``ALTER TABLE ADD COLUMN ... REFERENCES`` as of
+    3.26 (2018). The inline ``ON DELETE SET NULL`` is honored because
+    ``PRAGMA foreign_keys`` is enabled on every connection by
+    ``sqlite_engine._apply_sqlite_pragmas``.
+    """
+    cols = {
+        row[1]
+        for row in conn.execute(text("PRAGMA table_info(videos)"))
+    }
+    if "creator_id" in cols:
+        return
+    conn.execute(
+        text(
+            "ALTER TABLE videos ADD COLUMN creator_id INTEGER "
+            "REFERENCES creators(id) ON DELETE SET NULL"
+        )
+    )
 
 
 # Re-export a type alias used by tests that want to introspect row maps
