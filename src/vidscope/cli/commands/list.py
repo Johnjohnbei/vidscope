@@ -41,6 +41,7 @@ def list_command(
         table.add_column("platform")
         table.add_column("title", overflow="fold")
         table.add_column("author")
+        table.add_column("creator_id", justify="right", style="dim")
         table.add_column("duration", justify="right")
         table.add_column("ingested")
 
@@ -53,6 +54,7 @@ def list_command(
                 video.platform.value,
                 (video.title or "")[:60],
                 (video.author or "-")[:30],
+                str(int(video.creator_id)) if video.creator_id is not None else "-",
                 duration,
                 video.created_at.strftime("%Y-%m-%d") if video.created_at else "-",
             )
