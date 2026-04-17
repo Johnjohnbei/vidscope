@@ -22,6 +22,9 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.engine.base import RootTransaction
 
 from vidscope.adapters.sqlite.analysis_repository import AnalysisRepositorySQLite
+from vidscope.adapters.sqlite.creator_repository import (
+    CreatorRepositorySQLite,
+)
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
 from vidscope.adapters.sqlite.pipeline_run_repository import (
     PipelineRunRepositorySQLite,
@@ -40,6 +43,7 @@ from vidscope.adapters.sqlite.watch_refresh_repository import (
 from vidscope.domain.errors import StorageError
 from vidscope.ports import (
     AnalysisRepository,
+    CreatorRepository,
     FrameRepository,
     PipelineRunRepository,
     SearchIndex,
@@ -71,6 +75,7 @@ class SqliteUnitOfWork:
         # the same attribute types on both. Concrete adapters are
         # instantiated in __enter__ and assigned to these slots.
         self.videos: VideoRepository
+        self.creators: CreatorRepository
         self.transcripts: TranscriptRepository
         self.frames: FrameRepository
         self.analyses: AnalysisRepository
@@ -86,6 +91,7 @@ class SqliteUnitOfWork:
         self._transaction = self._connection.begin()
 
         self.videos = VideoRepositorySQLite(self._connection)
+        self.creators = CreatorRepositorySQLite(self._connection)
         self.transcripts = TranscriptRepositorySQLite(self._connection)
         self.frames = FrameRepositorySQLite(self._connection)
         self.analyses = AnalysisRepositorySQLite(self._connection)
