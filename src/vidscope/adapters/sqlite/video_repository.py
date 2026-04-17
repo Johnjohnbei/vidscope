@@ -15,7 +15,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 
 from vidscope.adapters.sqlite.schema import videos as videos_table
-from vidscope.domain import Platform, PlatformId, Video, VideoId
+from vidscope.domain import Creator, Platform, PlatformId, Video, VideoId
 from vidscope.domain.errors import StorageError
 
 __all__ = ["VideoRepositorySQLite"]
@@ -50,14 +50,26 @@ class VideoRepositorySQLite:
             )
         return self.get(VideoId(int(inserted_id[0]))) or video
 
-    def upsert_by_platform_id(self, video: Video) -> Video:
+    def upsert_by_platform_id(
+        self, video: Video, creator: Creator | None = None
+    ) -> Video:
         """Insert or update the row matching ``(platform, platform_id)``.
 
-        Uses SQLite's ``INSERT ... ON CONFLICT(platform_id) DO UPDATE``
-        syntax. Fields present on ``video`` overwrite the existing row;
-        ``created_at`` is preserved on update.
+        See :class:`VideoRepository.upsert_by_platform_id` for the
+        write-through cache contract on ``videos.author`` when ``creator``
+        is provided (D-03).
         """
         payload = _video_to_row(video)
+
+        # D-03 write-through: when a creator is passed, the repository
+        # owns both `author` (denormalised cache) and `creator_id` (FK).
+        # They ARE written in the same SQL statement → atomic.
+        if creator is not None:
+            if creator.display_name is not None:
+                payload["author"] = creator.display_name
+            if creator.id is not None:
+                payload["creator_id"] = int(creator.id)
+
         stmt = sqlite_insert(videos_table).values(**payload)
         # On conflict, update every field except id and created_at.
         update_map = {

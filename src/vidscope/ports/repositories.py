@@ -77,10 +77,26 @@ class VideoRepository(Protocol):
         """
         ...
 
-    def upsert_by_platform_id(self, video: Video) -> Video:
+    def upsert_by_platform_id(
+        self, video: Video, creator: Creator | None = None
+    ) -> Video:
         """Insert ``video`` or update the existing row matching
         ``(platform, platform_id)``. Returns the resulting entity with
-        ``id`` populated. Idempotent."""
+        ``id`` populated. Idempotent.
+
+        When ``creator`` is provided, the repository structurally enforces
+        the write-through cache on ``videos.author`` (D-03): within the
+        same SQL statement, ``video.author = creator.display_name`` and
+        ``video.creator_id = int(creator.id)``. Application code MUST NOT
+        write ``video.author`` directly — the repository is the single
+        source of truth for the cache.
+
+        When ``creator`` is None (the default), the existing behavior is
+        preserved: ``video.author`` is taken from the ``video`` argument
+        as-is, ``video.creator_id`` is left untouched. This keeps M001–M005
+        callers working without modification until M006/S02 wires creators
+        through the ingest stage.
+        """
         ...
 
     def get(self, video_id: VideoId) -> Video | None:
