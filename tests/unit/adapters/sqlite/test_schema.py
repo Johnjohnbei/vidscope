@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import Engine, inspect, text
 
 from vidscope.adapters.sqlite.schema import init_db
@@ -56,3 +57,194 @@ class TestInitDb:
             assert row is not None
             assert row["video_id"] == 1
             assert row["source"] == "transcript"
+
+
+class TestCreatorsSchema:
+    """Schema-level tests for the creators table (M006/S01)."""
+
+    def test_creators_table_exists(self, engine: Engine) -> None:
+        names = set(inspect(engine).get_table_names())
+        assert "creators" in names
+
+    def test_videos_creator_id_column_exists(self, engine: Engine) -> None:
+        cols = {c["name"] for c in inspect(engine).get_columns("videos")}
+        assert "creator_id" in cols
+
+    def test_creators_unique_platform_user_id_enforced(
+        self, engine: Engine
+    ) -> None:
+        from sqlalchemy.exc import IntegrityError
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO creators "
+                    "(platform, platform_user_id, is_orphan, created_at) "
+                    "VALUES ('youtube', 'UC_ABC', 0, CURRENT_TIMESTAMP)"
+                )
+            )
+        # Same (platform, platform_user_id) must fail the compound UNIQUE.
+        with pytest.raises(IntegrityError), engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO creators "
+                    "(platform, platform_user_id, is_orphan, created_at) "
+                    "VALUES ('youtube', 'UC_ABC', 0, CURRENT_TIMESTAMP)"
+                )
+            )
+
+    def test_same_platform_user_id_across_platforms_ok(
+        self, engine: Engine
+    ) -> None:
+        # D-01 scope: no cross-platform identity resolution.
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO creators "
+                    "(platform, platform_user_id, is_orphan, created_at) "
+                    "VALUES ('youtube', 'shared_id', 0, CURRENT_TIMESTAMP)"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO creators "
+                    "(platform, platform_user_id, is_orphan, created_at) "
+                    "VALUES ('tiktok', 'shared_id', 0, CURRENT_TIMESTAMP)"
+                )
+            )
+            total = conn.execute(
+                text("SELECT COUNT(*) FROM creators")
+            ).scalar()
+            assert total == 2
+
+    def test_videos_creator_id_set_null_on_creator_delete(
+        self, engine: Engine
+    ) -> None:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO creators "
+                    "(id, platform, platform_user_id, is_orphan, created_at) "
+                    "VALUES (100, 'youtube', 'UC_DEL', 0, CURRENT_TIMESTAMP)"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO videos "
+                    "(platform, platform_id, url, creator_id, created_at) "
+                    "VALUES ('youtube', 'v_del', 'https://x', 100, CURRENT_TIMESTAMP)"
+                )
+            )
+
+            # Delete creator — videos row must survive with creator_id = NULL
+            conn.execute(text("DELETE FROM creators WHERE id = 100"))
+            row = conn.execute(
+                text(
+                    "SELECT creator_id FROM videos WHERE platform_id = 'v_del'"
+                )
+            ).first()
+            assert row is not None
+            assert row[0] is None  # ON DELETE SET NULL fired
+
+    def test_idx_creators_handle_exists(self, engine: Engine) -> None:
+        indexes = inspect(engine).get_indexes("creators")
+        names = {idx["name"] for idx in indexes}
+        assert "idx_creators_handle" in names
+
+    def test_idx_videos_creator_id_exists(self, engine: Engine) -> None:
+        indexes = inspect(engine).get_indexes("videos")
+        names = {idx["name"] for idx in indexes}
+        assert "idx_videos_creator_id" in names
+
+
+class TestVideosCreatorIdAlter:
+    """Tests for ``_ensure_videos_creator_id`` idempotency.
+
+    Two paths must work:
+    1. Fresh install — videos.creator_id declared inline on the Table.
+    2. Upgrade path — pre-M006 videos table exists WITHOUT the column;
+       _ensure_videos_creator_id must ALTER it in.
+    """
+
+    def test_ensure_idempotent_on_fresh_install(
+        self, engine: Engine
+    ) -> None:
+        # engine fixture already ran init_db once. Run it again.
+        init_db(engine)
+        init_db(engine)  # third call, still no error
+        cols = {c["name"] for c in inspect(engine).get_columns("videos")}
+        assert "creator_id" in cols
+
+    def test_upgrade_path_adds_creator_id(self, tmp_path: object) -> None:
+        """Simulate a pre-M006 DB: create videos WITHOUT creator_id,
+        then run init_db and assert the column gets added.
+        """
+        from pathlib import Path
+
+        from vidscope.infrastructure.sqlite_engine import build_engine
+
+        db_path = Path(str(tmp_path)) / "pre_m006.db"  # type: ignore[arg-type]
+        eng = build_engine(db_path)
+
+        # Pre-M006 minimal videos table (no creator_id)
+        with eng.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE videos ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "platform TEXT NOT NULL, "
+                    "platform_id TEXT NOT NULL UNIQUE, "
+                    "url TEXT NOT NULL, "
+                    "author TEXT, "
+                    "title TEXT, "
+                    "duration REAL, "
+                    "upload_date TEXT, "
+                    "view_count INTEGER, "
+                    "media_key TEXT, "
+                    "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                    ")"
+                )
+            )
+            # Seed one row so we know data survives the ALTER
+            conn.execute(
+                text(
+                    "INSERT INTO videos (platform, platform_id, url, author) "
+                    "VALUES ('youtube', 'legacy_v1', 'https://x', 'Old Author')"
+                )
+            )
+
+        # Now run init_db — should add creator_id without losing data
+        init_db(eng)
+
+        cols = {c["name"] for c in inspect(eng).get_columns("videos")}
+        assert "creator_id" in cols
+
+        with eng.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT author, creator_id FROM videos "
+                    "WHERE platform_id = 'legacy_v1'"
+                )
+            ).first()
+            assert row is not None
+            assert row[0] == "Old Author"  # data preserved
+            assert row[1] is None  # new column defaults to NULL
+
+    def test_ensure_creator_id_helper_directly_idempotent(
+        self, tmp_path: object
+    ) -> None:
+        """Call _ensure_videos_creator_id twice explicitly to pin
+        the PRAGMA table_info guard.
+        """
+        from pathlib import Path
+
+        from vidscope.adapters.sqlite.schema import (
+            _ensure_videos_creator_id,
+        )
+        from vidscope.infrastructure.sqlite_engine import build_engine
+
+        eng = build_engine(Path(str(tmp_path)) / "idem.db")  # type: ignore[arg-type]
+        init_db(eng)
+        with eng.begin() as conn:
+            _ensure_videos_creator_id(conn)  # second call, no error
+            _ensure_videos_creator_id(conn)  # third call, no error
