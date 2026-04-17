@@ -193,7 +193,9 @@ class ProbeResult:
 
     The probe is a metadata-only call (no media download, no transcribe,
     no DB write) used by ``vidscope cookies test`` to verify that the
-    configured cookies actually authenticate against a gated platform.
+    configured cookies actually authenticate against a gated platform,
+    and by the M006 backfill script to recover creator metadata from
+    already-ingested videos.
 
     Attributes
     ----------
@@ -207,12 +209,40 @@ class ProbeResult:
     title:
         Resolved video title when ``status == ProbeStatus.OK``, ``None``
         otherwise.
+    uploader:
+        yt-dlp's ``uploader`` field — the human-friendly creator name
+        (e.g. "MrBeast"). ``None`` when the extractor does not expose it.
+        Consumed by the M006 backfill script to populate
+        ``Creator.display_name``.
+    uploader_id:
+        yt-dlp's ``uploader_id`` field — the platform-stable id that
+        survives renames. Consumed by the M006 backfill script to
+        populate ``Creator.platform_user_id`` (the canonical UNIQUE key).
+    uploader_url:
+        Creator profile URL. Consumed as ``Creator.profile_url``.
+    channel_follower_count:
+        Current follower count when yt-dlp exposes it. Consumed as
+        ``Creator.follower_count`` (per D-04: scalar only, no
+        time-series — M009 owns temporal data).
+    uploader_thumbnail:
+        Creator avatar URL (first URL if yt-dlp returns a list).
+        Consumed as ``Creator.avatar_url`` (per D-05: string only,
+        no image download).
+    uploader_verified:
+        Verified-badge flag when exposed. Not consistently populated
+        across extractors — ``None`` is normal.
     """
 
     status: ProbeStatus
     url: str
     detail: str
     title: str | None = None
+    uploader: str | None = None
+    uploader_id: str | None = None
+    uploader_url: str | None = None
+    channel_follower_count: int | None = None
+    uploader_thumbnail: str | None = None
+    uploader_verified: bool | None = None
 
 
 class ProbeStatus(StrEnum):
