@@ -126,13 +126,14 @@ class TestBuildMcpServer:
         server = build_mcp_server(sandboxed_container)
         assert server.name == "vidscope"
 
-    def test_server_registers_six_tools(
+    def test_server_registers_seven_tools(
         self, sandboxed_container: Container
     ) -> None:
         server = build_mcp_server(sandboxed_container)
         tools = asyncio.run(server.list_tools())
         names = {tool.name for tool in tools}
         assert names == {
+            "vidscope_get_creator",
             "vidscope_ingest",
             "vidscope_search",
             "vidscope_get_video",

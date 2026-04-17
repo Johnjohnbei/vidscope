@@ -322,7 +322,7 @@ def build_mcp_server(container: Container) -> FastMCP:
         except ValueError:
             raise ValueError(
                 f"unknown platform '{platform}'. Valid values: youtube, tiktok, instagram"
-            )
+            ) from None
 
         try:
             use_case = GetCreatorUseCase(
