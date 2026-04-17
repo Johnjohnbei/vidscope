@@ -6,9 +6,11 @@ These tests must have no I/O and no third-party imports beyond pytest.
 from __future__ import annotations
 
 from vidscope.domain.values import (
+    CreatorId,
     Language,
     Platform,
     PlatformId,
+    PlatformUserId,
     RunStatus,
     StageName,
     VideoId,
@@ -76,3 +78,26 @@ class TestNewTypes:
         pid = PlatformId("abc123")
         assert pid == "abc123"
         assert isinstance(pid, str)
+
+
+class TestCreatorId:
+    def test_is_int_newtype(self) -> None:
+        cid = CreatorId(42)
+        assert cid == 42
+        assert isinstance(cid, int)
+
+    def test_round_trip_preserves_value(self) -> None:
+        assert int(CreatorId(0)) == 0
+        assert int(CreatorId(999_999)) == 999_999
+
+
+class TestPlatformUserId:
+    def test_is_str_newtype(self) -> None:
+        puid = PlatformUserId("UC123")
+        assert puid == "UC123"
+        assert isinstance(puid, str)
+
+    def test_accepts_empty_string(self) -> None:
+        # NewType is type-level only; empty strings are legal at
+        # runtime. Adapter-layer validation handles rejection.
+        assert PlatformUserId("") == ""

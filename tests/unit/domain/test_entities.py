@@ -12,6 +12,7 @@ import pytest
 
 from vidscope.domain.entities import (
     Analysis,
+    Creator,
     Frame,
     PipelineRun,
     Transcript,
@@ -21,9 +22,11 @@ from vidscope.domain.entities import (
     WatchRefresh,
 )
 from vidscope.domain.values import (
+    CreatorId,
     Language,
     Platform,
     PlatformId,
+    PlatformUserId,
     RunStatus,
     StageName,
     VideoId,
@@ -235,3 +238,78 @@ class TestWatchRefresh:
             new_videos_ingested=0,
         )
         assert r.errors == ()
+
+
+class TestCreator:
+    def _minimal(self) -> Creator:
+        return Creator(
+            platform=Platform.YOUTUBE,
+            platform_user_id=PlatformUserId("UC_ABC"),
+        )
+
+    def test_minimal_creator_has_defaults(self) -> None:
+        c = self._minimal()
+        assert c.id is None
+        assert c.handle is None
+        assert c.display_name is None
+        assert c.profile_url is None
+        assert c.avatar_url is None
+        assert c.follower_count is None
+        assert c.is_verified is None
+        assert c.is_orphan is False
+        assert c.first_seen_at is None
+        assert c.last_seen_at is None
+        assert c.created_at is None
+
+    def test_creator_is_frozen(self) -> None:
+        c = self._minimal()
+        with pytest.raises(FrozenInstanceError):
+            c.handle = "@new"  # type: ignore[misc]
+
+    def test_creator_uses_slots(self) -> None:
+        c = self._minimal()
+        assert not hasattr(c, "__dict__")
+
+    def test_creator_equality_by_fields(self) -> None:
+        a = Creator(
+            platform=Platform.YOUTUBE,
+            platform_user_id=PlatformUserId("UC_ABC"),
+            handle="@creator",
+            display_name="The Creator",
+        )
+        b = Creator(
+            platform=Platform.YOUTUBE,
+            platform_user_id=PlatformUserId("UC_ABC"),
+            handle="@creator",
+            display_name="The Creator",
+        )
+        assert a == b
+
+    def test_orphan_flag_round_trips(self) -> None:
+        c = Creator(
+            platform=Platform.INSTAGRAM,
+            platform_user_id=PlatformUserId("orphan:legacy_author"),
+            is_orphan=True,
+        )
+        assert c.is_orphan is True
+
+    def test_full_fields_construction(self) -> None:
+        now = UTC_NOW
+        c = Creator(
+            platform=Platform.TIKTOK,
+            platform_user_id=PlatformUserId("12345"),
+            id=CreatorId(7),
+            handle="@test",
+            display_name="Test",
+            profile_url="https://tiktok.com/@test",
+            avatar_url="https://cdn/test.jpg",
+            follower_count=100_000,
+            is_verified=True,
+            is_orphan=False,
+            first_seen_at=now,
+            last_seen_at=now,
+            created_at=now,
+        )
+        assert c.id == 7
+        assert c.follower_count == 100_000
+        assert c.is_verified is True
