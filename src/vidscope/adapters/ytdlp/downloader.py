@@ -44,7 +44,13 @@ import yt_dlp
 from yt_dlp.utils import DownloadError, ExtractorError
 
 from vidscope.domain import CookieAuthError, IngestError, Platform, PlatformId
-from vidscope.ports import ChannelEntry, IngestOutcome, ProbeResult, ProbeStatus
+from vidscope.ports import (
+    ChannelEntry,
+    CreatorInfo,
+    IngestOutcome,
+    ProbeResult,
+    ProbeStatus,
+)
 
 __all__ = ["YtdlpDownloader"]
 
@@ -413,6 +419,7 @@ def _info_to_outcome(
         duration=_float_or_none(info.get("duration")),
         upload_date=_str_or_none(info.get("upload_date")),
         view_count=_int_or_none(info.get("view_count")),
+        creator_info=_extract_creator_info(info),
     )
 
 
@@ -593,6 +600,41 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _extract_creator_info(info: dict[str, Any]) -> CreatorInfo | None:
+    """Extract creator metadata from a yt-dlp ``info_dict``.
+
+    Returns ``None`` when no stable creator id is available — D-02:
+    ingest must still succeed on compilations, playlists without a
+    single uploader, and extractors that don't expose one. A caller
+    (``IngestStage``) treats ``None`` as "skip creator upsert, save
+    video with creator_id=NULL, log a WARNING".
+
+    Zero network calls — pure dict access on the already-extracted
+    ``info_dict``.
+    """
+    platform_user_id = _str_or_none(
+        info.get("uploader_id") or info.get("channel_id")
+    )
+    if platform_user_id is None:
+        return None
+
+    uploader = _str_or_none(info.get("uploader") or info.get("channel"))
+    return CreatorInfo(
+        platform_user_id=platform_user_id,
+        handle=uploader,
+        display_name=uploader,
+        profile_url=_str_or_none(
+            info.get("uploader_url") or info.get("channel_url")
+        ),
+        avatar_url=_extract_uploader_thumbnail(info),
+        follower_count=_int_or_none(
+            info.get("channel_follower_count")
+            or info.get("channel_followers")
+        ),
+        is_verified=_extract_uploader_verified(info),
+    )
 
 
 def _extract_uploader_thumbnail(info: dict[str, Any]) -> str | None:

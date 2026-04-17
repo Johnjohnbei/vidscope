@@ -994,3 +994,294 @@ class TestProbeCreatorExtraction:
         assert result.channel_follower_count is None
         assert result.uploader_thumbnail is None
         assert result.uploader_verified is None
+
+
+# ---------------------------------------------------------------------------
+# M006/S02-P02 — Creator info extraction (D-01 / D-02)
+# ---------------------------------------------------------------------------
+
+
+class TestCreatorInfoExtraction:
+    """Creator metadata extraction from yt-dlp info_dict.
+
+    S02-P02 (D-01): ``YtdlpDownloader.download()`` populates
+    ``IngestOutcome.creator_info`` when ``uploader_id`` is available.
+
+    S02-P02 (D-02): When ``uploader_id`` is absent or empty, ingest
+    still succeeds and ``outcome.creator_info is None`` (the downstream
+    IngestStage will log a WARNING and save the video with
+    ``creator_id=NULL``).
+    """
+
+    def test_populates_creator_info_when_uploader_id_present(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        destination = tmp_path / "d"
+        expected_file = destination / "v1.mp4"
+        info = {
+            "id": "v1",
+            "extractor_key": "Youtube",
+            "title": "hi",
+            "uploader": "Alice Channel",
+            "uploader_id": "UC_alice",
+            "uploader_url": "https://youtube.com/c/alice",
+            "channel_follower_count": 1234,
+            "uploader_thumbnail": "https://yt3.ggpht.com/alice.jpg",
+            "channel_verified": True,
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=v1", str(destination)
+        )
+
+        assert outcome.creator_info is not None
+        assert outcome.creator_info["platform_user_id"] == "UC_alice"
+        assert outcome.creator_info["handle"] == "Alice Channel"
+        assert outcome.creator_info["display_name"] == "Alice Channel"
+        assert (
+            outcome.creator_info["profile_url"]
+            == "https://youtube.com/c/alice"
+        )
+        assert (
+            outcome.creator_info["avatar_url"]
+            == "https://yt3.ggpht.com/alice.jpg"
+        )
+        assert outcome.creator_info["follower_count"] == 1234
+        assert outcome.creator_info["is_verified"] is True
+
+    def test_creator_info_none_when_uploader_id_absent(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """D-02 canonical case: yt-dlp extractor did not expose
+        uploader_id. Ingest must still succeed; creator_info is None."""
+        destination = tmp_path / "d"
+        expected_file = destination / "v2.mp4"
+        info = {
+            "id": "v2",
+            "extractor_key": "Youtube",
+            "title": "compilation",
+            "uploader": "Some Compilation",
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=v2", str(destination)
+        )
+
+        assert outcome.platform is Platform.YOUTUBE
+        assert outcome.title == "compilation"
+        assert outcome.creator_info is None
+
+    def test_creator_info_none_when_uploader_id_empty_string(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Empty string uploader_id is treated as absent (D-02)."""
+        destination = tmp_path / "d"
+        expected_file = destination / "v3.mp4"
+        info = {
+            "id": "v3",
+            "extractor_key": "Youtube",
+            "uploader_id": "",
+            "uploader": "x",
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=v3", str(destination)
+        )
+        assert outcome.creator_info is None
+
+    def test_creator_info_only_platform_user_id_when_others_absent(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Minimal happy path — uploader_id alone is enough to build
+        CreatorInfo; all other fields degrade to None."""
+        destination = tmp_path / "d"
+        expected_file = destination / "v4.mp4"
+        info = {
+            "id": "v4",
+            "extractor_key": "Youtube",
+            "uploader_id": "UC_minimal",
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=v4", str(destination)
+        )
+
+        assert outcome.creator_info is not None
+        assert outcome.creator_info["platform_user_id"] == "UC_minimal"
+        assert outcome.creator_info["handle"] is None
+        assert outcome.creator_info["display_name"] is None
+        assert outcome.creator_info["profile_url"] is None
+        assert outcome.creator_info["avatar_url"] is None
+        assert outcome.creator_info["follower_count"] is None
+        assert outcome.creator_info["is_verified"] is None
+
+    def test_creator_info_falls_back_to_channel_id(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """When ``uploader_id`` is absent, ``channel_id`` is used
+        (YouTube extractor variant)."""
+        destination = tmp_path / "d"
+        expected_file = destination / "v5.mp4"
+        info = {
+            "id": "v5",
+            "extractor_key": "Youtube",
+            "channel_id": "UC_channel_fallback",
+            "channel": "Fallback Channel",
+            "channel_url": "https://youtube.com/channel/UC_channel_fallback",
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=v5", str(destination)
+        )
+
+        assert outcome.creator_info is not None
+        assert outcome.creator_info["platform_user_id"] == "UC_channel_fallback"
+        assert outcome.creator_info["display_name"] == "Fallback Channel"
+        assert (
+            outcome.creator_info["profile_url"]
+            == "https://youtube.com/channel/UC_channel_fallback"
+        )
+
+    def test_creator_info_avatar_from_list_shape(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """yt-dlp sometimes returns uploader_thumbnail as a list of dicts."""
+        destination = tmp_path / "d"
+        expected_file = destination / "v6.mp4"
+        info = {
+            "id": "v6",
+            "extractor_key": "Tiktok",
+            "uploader_id": "123456",
+            "uploader": "tokker",
+            "uploader_thumbnail": [
+                {"url": "https://tiktokcdn/avatar1.jpg", "width": 480},
+                {"url": "https://tiktokcdn/avatar2.jpg", "width": 100},
+            ],
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.tiktok.com/@tokker/video/v6", str(destination)
+        )
+
+        assert outcome.creator_info is not None
+        assert (
+            outcome.creator_info["avatar_url"]
+            == "https://tiktokcdn/avatar1.jpg"
+        )
+
+    def test_creator_info_follower_count_non_int_degrades_to_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """_int_or_none delegation — bad follower count doesn't crash."""
+        destination = tmp_path / "d"
+        expected_file = destination / "v7.mp4"
+        info = {
+            "id": "v7",
+            "extractor_key": "Youtube",
+            "uploader_id": "UC_noint",
+            "uploader": "x",
+            "channel_follower_count": "not_an_int",
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=v7", str(destination)
+        )
+
+        assert outcome.creator_info is not None
+        assert outcome.creator_info["follower_count"] is None
+
+    def test_creator_info_follower_count_fallback_channel_followers(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Some extractors use ``channel_followers`` instead of
+        ``channel_follower_count`` — fallback must work."""
+        destination = tmp_path / "d"
+        expected_file = destination / "v8.mp4"
+        info = {
+            "id": "v8",
+            "extractor_key": "Tiktok",
+            "uploader_id": "999",
+            "uploader": "t",
+            "channel_followers": 50000,
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.tiktok.com/@t/video/v8", str(destination)
+        )
+
+        assert outcome.creator_info is not None
+        assert outcome.creator_info["follower_count"] == 50000
+
+    def test_existing_happy_path_test_still_passes_with_creator_info(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Regression: original TestHappyPath fixture (no uploader_id)
+        must still produce a valid outcome; creator_info is None because
+        uploader_id was absent from that fixture."""
+        destination = tmp_path / "d"
+        expected_file = destination / "abc123.mp4"
+        info = {
+            "id": "abc123",
+            "extractor_key": "Youtube",
+            "webpage_url": "https://www.youtube.com/watch?v=abc123",
+            "title": "Hello world",
+            "uploader": "Test Channel",
+            "duration": 120.5,
+            "upload_date": "20260401",
+            "view_count": 1234,
+            "requested_downloads": [{"filepath": str(expected_file)}],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(info=info, touch_file=expected_file),
+        )
+
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc123", str(destination)
+        )
+
+        assert outcome.platform is Platform.YOUTUBE
+        assert outcome.title == "Hello world"
+        assert outcome.author == "Test Channel"
+        assert outcome.view_count == 1234
+        assert outcome.creator_info is None
