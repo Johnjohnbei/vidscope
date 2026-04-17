@@ -21,8 +21,14 @@ Design rules
 
 from __future__ import annotations
 
+from vidscope.application.get_creator import GetCreatorResult, GetCreatorUseCase
 from vidscope.application.get_status import GetStatusResult, GetStatusUseCase
 from vidscope.application.ingest_video import IngestResult, IngestVideoUseCase
+from vidscope.application.list_creator_videos import (
+    ListCreatorVideosResult,
+    ListCreatorVideosUseCase,
+)
+from vidscope.application.list_creators import ListCreatorsResult, ListCreatorsUseCase
 from vidscope.application.list_videos import ListVideosResult, ListVideosUseCase
 from vidscope.application.search_library import (
     SearchLibraryResult,
@@ -49,10 +55,16 @@ from vidscope.application.watchlist import (
 __all__ = [
     "AddWatchedAccountUseCase",
     "AddedAccountResult",
+    "GetCreatorResult",
+    "GetCreatorUseCase",
     "GetStatusResult",
     "GetStatusUseCase",
     "IngestResult",
     "IngestVideoUseCase",
+    "ListCreatorVideosResult",
+    "ListCreatorVideosUseCase",
+    "ListCreatorsResult",
+    "ListCreatorsUseCase",
     "ListVideosResult",
     "ListVideosUseCase",
     "ListWatchedAccountsUseCase",
