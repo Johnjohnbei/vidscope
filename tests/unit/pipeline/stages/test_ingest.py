@@ -8,6 +8,7 @@ without calling yt-dlp or touching the network.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,13 +19,15 @@ from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from vidscope.domain import (
+    Creator,
     IngestError,
     Platform,
     PlatformId,
+    PlatformUserId,
 )
 from vidscope.infrastructure.sqlite_engine import build_engine
 from vidscope.pipeline.stages.ingest import IngestStage
-from vidscope.ports import IngestOutcome, PipelineContext
+from vidscope.ports import CreatorInfo, IngestOutcome, PipelineContext
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -393,3 +396,359 @@ class TestStageIdentity:
 
         assert len(captured) == 1
         assert not Path(captured[0]).exists()
+
+
+# ---------------------------------------------------------------------------
+# M006/S02-P03 — Creator wiring (D-01, D-02, D-03, D-04)
+# ---------------------------------------------------------------------------
+
+
+def _youtube_outcome_with_creator_factory(
+    platform_id: str = "abc123",
+    *,
+    creator_info: CreatorInfo | None = None,
+):  # type: ignore[no-untyped-def]
+    """Same as _youtube_outcome_factory but allows injecting a CreatorInfo."""
+
+    def build(destination_dir: str) -> IngestOutcome:
+        dest = Path(destination_dir) / f"{platform_id}.mp4"
+        dest.write_bytes(b"fake mp4 content")
+        return IngestOutcome(
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId(platform_id),
+            url=f"https://www.youtube.com/watch?v={platform_id}",
+            media_path=str(dest),
+            title="Fake video title",
+            author="Fake Channel",
+            duration=42.0,
+            upload_date="20260401",
+            view_count=1000,
+            creator_info=creator_info,
+        )
+
+    return build
+
+
+def _sample_creator_info(uploader_id: str = "UC_fake") -> CreatorInfo:
+    return CreatorInfo(
+        platform_user_id=uploader_id,
+        handle="Fake Channel",
+        display_name="Fake Channel",
+        profile_url=f"https://youtube.com/c/{uploader_id}",
+        avatar_url="https://yt3.ggpht.com/fake.jpg",
+        follower_count=12345,
+        is_verified=False,
+    )
+
+
+class TestCreatorWiring:
+    """IngestStage integration with the Creator foundation from S01.
+
+    - D-01: creator_info present → creator upsert + video.creator_id
+    - D-02: creator_info None → ingest OK, creator_id=NULL, WARNING log
+    - D-03: re-ingest → creator row refreshed, no duplicate
+    - D-04: single UoW transaction, rollback on video failure
+    """
+
+    def test_execute_with_creator_info_upserts_creator_and_links_video(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """D-01 happy path: outcome carries creator_info → creator row
+        written, video.creator_id set, video.author from D-03 write-through."""
+        downloader = FakeDownloader(
+            outcome_factory=_youtube_outcome_with_creator_factory(
+                "vid_d01",
+                creator_info=_sample_creator_info("UC_d01"),
+            )
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=vid_d01"
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            assert uow.creators.count() == 1
+            creator = uow.creators.find_by_platform_user_id(
+                Platform.YOUTUBE, PlatformUserId("UC_d01")
+            )
+            assert creator is not None
+            assert creator.display_name == "Fake Channel"
+            assert creator.follower_count == 12345
+
+            video = uow.videos.get(ctx.video_id)  # type: ignore[arg-type]
+            assert video is not None
+            assert video.author == "Fake Channel"
+            from sqlalchemy import text
+            creator_id = uow._connection.execute(  # type: ignore[attr-defined]
+                text("SELECT creator_id FROM videos WHERE id = :id"),
+                {"id": int(video.id)},  # type: ignore[arg-type]
+            ).scalar()
+            assert creator_id is not None
+            assert int(creator_id) == int(creator.id)  # type: ignore[arg-type]
+
+    def test_execute_without_creator_info_saves_video_with_null_creator_id(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """D-02: creator_info None → ingest succeeds, creator_id=NULL,
+        WARNING logged with the video URL."""
+        downloader = FakeDownloader(
+            outcome_factory=_youtube_outcome_with_creator_factory(
+                "vid_d02",
+                creator_info=None,
+            )
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        url = "https://www.youtube.com/watch?v=vid_d02"
+        ctx = PipelineContext(source_url=url)
+
+        with (
+            caplog.at_level(
+                logging.WARNING, logger="vidscope.pipeline.stages.ingest"
+            ),
+            SqliteUnitOfWork(engine) as uow,
+        ):
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            assert uow.creators.count() == 0
+
+            video = uow.videos.get(ctx.video_id)  # type: ignore[arg-type]
+            assert video is not None
+            assert video.author == "Fake Channel"
+            from sqlalchemy import text
+            creator_id = uow._connection.execute(  # type: ignore[attr-defined]
+                text("SELECT creator_id FROM videos WHERE id = :id"),
+                {"id": int(video.id)},  # type: ignore[arg-type]
+            ).scalar()
+            assert creator_id is None
+
+        warning_records = [
+            r for r in caplog.records if r.levelno == logging.WARNING
+        ]
+        assert len(warning_records) >= 1
+        assert any(url in r.getMessage() for r in warning_records), (
+            f"expected WARNING to include the URL {url!r}, got: "
+            f"{[r.getMessage() for r in warning_records]}"
+        )
+
+    def test_re_execute_with_updated_follower_count_refreshes_creator(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """D-03 idempotent: second ingest with updated follower_count
+        refreshes the creator row in-place (no duplicate, fresh value)."""
+        stage = IngestStage(
+            downloader=FakeDownloader(
+                outcome_factory=_youtube_outcome_with_creator_factory(
+                    "vid_d03",
+                    creator_info=_sample_creator_info("UC_d03"),
+                )
+            ),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx1 = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=vid_d03"
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx1, uow)
+
+        updated_info = CreatorInfo(
+            platform_user_id="UC_d03",
+            handle="Fake Channel",
+            display_name="Fake Channel",
+            profile_url="https://youtube.com/c/UC_d03",
+            avatar_url="https://yt3.ggpht.com/fake.jpg",
+            follower_count=99999,
+            is_verified=True,
+        )
+        stage2 = IngestStage(
+            downloader=FakeDownloader(
+                outcome_factory=_youtube_outcome_with_creator_factory(
+                    "vid_d03",
+                    creator_info=updated_info,
+                )
+            ),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx2 = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=vid_d03"
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            stage2.execute(ctx2, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            assert uow.creators.count() == 1
+            creator = uow.creators.find_by_platform_user_id(
+                Platform.YOUTUBE, PlatformUserId("UC_d03")
+            )
+            assert creator is not None
+            assert creator.follower_count == 99999
+            assert creator.is_verified is True
+            assert uow.videos.count() == 1
+
+    def test_video_upsert_failure_rolls_back_creator(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """D-04: single transaction — if uow.videos.upsert_by_platform_id
+        raises, the creator upsert is rolled back too."""
+        downloader = FakeDownloader(
+            outcome_factory=_youtube_outcome_with_creator_factory(
+                "vid_d04",
+                creator_info=_sample_creator_info("UC_d04_rollback"),
+            )
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=vid_d04"
+        )
+
+        from vidscope.adapters.sqlite.video_repository import (
+            VideoRepositorySQLite,
+        )
+
+        def _boom(
+            self: object, video: object, creator: object = None
+        ) -> None:
+            raise RuntimeError("simulated video upsert failure")
+
+        monkeypatch.setattr(
+            VideoRepositorySQLite, "upsert_by_platform_id", _boom
+        )
+
+        with pytest.raises(RuntimeError, match="simulated"), SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            assert uow.creators.count() == 0
+            assert uow.videos.count() == 0
+
+    def test_two_videos_same_creator_share_one_creator_row(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """Two different videos from the same uploader → one creator
+        row, two videos both linking to it."""
+        info = _sample_creator_info("UC_shared")
+        stage = IngestStage(
+            downloader=FakeDownloader(
+                outcome_factory=_youtube_outcome_with_creator_factory(
+                    "vid_shared_1", creator_info=info
+                )
+            ),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx1 = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=vid_shared_1"
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx1, uow)
+
+        stage2 = IngestStage(
+            downloader=FakeDownloader(
+                outcome_factory=_youtube_outcome_with_creator_factory(
+                    "vid_shared_2", creator_info=info
+                )
+            ),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx2 = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=vid_shared_2"
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            stage2.execute(ctx2, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            assert uow.creators.count() == 1
+            assert uow.videos.count() == 2
+            creator = uow.creators.find_by_platform_user_id(
+                Platform.YOUTUBE, PlatformUserId("UC_shared")
+            )
+            assert creator is not None
+            from sqlalchemy import text
+            rows = uow._connection.execute(  # type: ignore[attr-defined]
+                text(
+                    "SELECT creator_id FROM videos "
+                    "WHERE platform_id IN ('vid_shared_1', 'vid_shared_2')"
+                )
+            ).all()
+            creator_ids = {r[0] for r in rows}
+            assert creator_ids == {int(creator.id)}  # type: ignore[arg-type]
+
+    def test_existing_happy_path_still_works_with_none_creator_info(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """Regression: original _youtube_outcome_factory (no creator_info)
+        still produces a valid ingest via the D-02 code path."""
+        downloader = FakeDownloader(
+            outcome_factory=_youtube_outcome_factory("regression_abc")
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=regression_abc"
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            result = stage.execute(ctx, uow)
+
+        assert result.skipped is False
+        with SqliteUnitOfWork(engine) as uow:
+            assert uow.videos.count() == 1
+            assert uow.creators.count() == 0
+
+    def test_creator_from_info_constructs_domain_creator(self) -> None:
+        """_creator_from_info (private helper) builds a Creator from a
+        CreatorInfo without I/O."""
+        from vidscope.pipeline.stages.ingest import _creator_from_info
+
+        info = _sample_creator_info("UC_pure")
+        creator = _creator_from_info(info, Platform.TIKTOK)
+
+        assert isinstance(creator, Creator)
+        assert creator.platform is Platform.TIKTOK
+        assert creator.platform_user_id == "UC_pure"
+        assert creator.handle == "Fake Channel"
+        assert creator.display_name == "Fake Channel"
+        assert creator.follower_count == 12345
+        assert creator.is_orphan is False
+        assert creator.id is None

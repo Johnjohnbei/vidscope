@@ -27,17 +27,21 @@ with a probe-before-download optimization. See decision D025.
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 
 from vidscope.domain import (
+    Creator,
     IngestError,
     Platform,
+    PlatformUserId,
     StageName,
     Video,
     detect_platform,
 )
 from vidscope.ports import (
+    CreatorInfo,
     Downloader,
     MediaStorage,
     PipelineContext,
@@ -46,6 +50,8 @@ from vidscope.ports import (
 )
 
 __all__ = ["IngestStage"]
+
+_logger = logging.getLogger(__name__)
 
 
 class IngestStage:
@@ -162,10 +168,25 @@ class IngestStage:
                 media_key=stored_key,
             )
 
-            # 5. Upsert the videos row. platform_id uniqueness makes
-            #    this idempotent — a second run updates instead of
-            #    raising.
-            persisted = uow.videos.upsert_by_platform_id(video)
+            # 5. Upsert creator (D-01) BEFORE video (D-04 transaction
+            #    order). When creator_info is None, skip creator upsert
+            #    and log a WARNING (D-02).
+            creator: Creator | None = None
+            if outcome.creator_info is not None:
+                creator = uow.creators.upsert(
+                    _creator_from_info(outcome.creator_info, outcome.platform)
+                )
+            else:
+                _logger.warning(
+                    "ingest: yt-dlp exposed no uploader_id for %s; "
+                    "video will be saved with creator_id=NULL",
+                    ctx.source_url,
+                )
+
+            # 6. Upsert the videos row. Passing creator= triggers the
+            #    D-03 write-through cache in VideoRepository: author +
+            #    creator_id are set atomically in the same SQL statement.
+            persisted = uow.videos.upsert_by_platform_id(video, creator=creator)
 
             # 6. Mutate the pipeline context so downstream stages
             #    (transcribe, frames, analyze) can read what we
@@ -185,6 +206,27 @@ class IngestStage:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _creator_from_info(info: CreatorInfo, platform: Platform) -> Creator:
+    """Build a domain :class:`Creator` from a :class:`CreatorInfo` TypedDict.
+
+    Pure function — no I/O. The ``Creator`` carries ``id=None`` because
+    this is the INPUT to :meth:`CreatorRepository.upsert`; the repo
+    assigns the surrogate id and returns a new :class:`Creator` with
+    ``id`` populated.
+    """
+    return Creator(
+        platform=platform,
+        platform_user_id=PlatformUserId(info["platform_user_id"]),
+        handle=info["handle"],
+        display_name=info["display_name"],
+        profile_url=info["profile_url"],
+        avatar_url=info["avatar_url"],
+        follower_count=info["follower_count"],
+        is_verified=info["is_verified"],
+        is_orphan=False,
+    )
 
 
 def _build_media_key(

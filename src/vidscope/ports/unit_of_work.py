@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from vidscope.ports.repositories import (
     AnalysisRepository,
+    CreatorRepository,
     FrameRepository,
     PipelineRunRepository,
     TranscriptRepository,
@@ -57,6 +58,7 @@ class UnitOfWork(Protocol):
     on a clean :meth:`__exit__`, and roll back if any exception bubbles up.
     """
 
+    creators: CreatorRepository
     videos: VideoRepository
     transcripts: TranscriptRepository
     frames: FrameRepository
