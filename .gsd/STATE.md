@@ -1,8 +1,8 @@
 # GSD State
 
 **Last Completed Milestone:** M005: Cookies UX improvements
-**Active Slice:** M006/S02 (next to plan)
-**Phase:** M001–M005 shipped · M006/S01 complete (4 plans, 667 tests green) · M006/S02–S03 + M007–M011 scoped
+**Active Slice:** M006/S02 (ready to execute — 3 plans, 2 waves)
+**Phase:** M001–M005 shipped · M006/S01 complete (4 plans, 667 tests green) · M006/S02 planned (3 plans) · M006/S03 + M007–M011 scoped
 **Requirements Status:** 12 active (M001–M005) · 20 planned (M006–M011, R040–R059) · 4 validated · 1 deferred · 3 out of scope
 
 ## Milestone Registry
@@ -25,6 +25,5 @@
 - None
 
 ## Next Action
-Plan and execute **M006/S02** (Ingest stage populates creator before video row).
-Roadmap in `.gsd/milestones/M006/M006-ROADMAP.md` §S02.
-Recommended command: `/gsd-discuss-phase M006/S02` then `/gsd-plan-phase M006/S02`.
+Execute **M006/S02** (Ingest stage populates creator before video row) — 3 plans planned, 2 waves.
+Recommended command: `/gsd-execute-phase M006/S02`.
