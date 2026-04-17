@@ -19,6 +19,7 @@ from vidscope.ports.clock import Clock
 from vidscope.ports.pipeline import (
     Analyzer,
     ChannelEntry,
+    CreatorInfo,
     Downloader,
     FrameExtractor,
     IngestOutcome,
@@ -49,6 +50,7 @@ __all__ = [
     "Analyzer",
     "ChannelEntry",
     "Clock",
+    "CreatorInfo",
     "CreatorRepository",
     "Downloader",
     "FrameExtractor",
