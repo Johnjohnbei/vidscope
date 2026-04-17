@@ -306,12 +306,40 @@ class YtdlpDownloader:
                 detail="yt-dlp returned no metadata",
             )
 
-        title = info.get("title") if isinstance(info, dict) else None
+        if not isinstance(info, dict):
+            # Safety: info might be an unexpected type on some extractors
+            return ProbeResult(
+                status=ProbeStatus.OK,
+                url=url,
+                detail="resolved but info dict not available",
+            )
+
+        title = info.get("title")
+        uploader = _str_or_none(info.get("uploader") or info.get("channel"))
+        uploader_id = _str_or_none(
+            info.get("uploader_id") or info.get("channel_id")
+        )
+        uploader_url = _str_or_none(
+            info.get("uploader_url") or info.get("channel_url")
+        )
+        channel_follower_count = _int_or_none(
+            info.get("channel_follower_count")
+            or info.get("channel_followers")
+        )
+        uploader_thumbnail = _extract_uploader_thumbnail(info)
+        uploader_verified = _extract_uploader_verified(info)
+
         return ProbeResult(
             status=ProbeStatus.OK,
             url=url,
             detail=f"resolved: {title or info.get('id', '?')}",
             title=title if isinstance(title, str) else None,
+            uploader=uploader,
+            uploader_id=uploader_id,
+            uploader_url=uploader_url,
+            channel_follower_count=channel_follower_count,
+            uploader_thumbnail=uploader_thumbnail,
+            uploader_verified=uploader_verified,
         )
 
     # ------------------------------------------------------------------
@@ -573,3 +601,38 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _extract_uploader_thumbnail(info: dict[str, Any]) -> str | None:
+    """Resolve the creator avatar URL from a yt-dlp info_dict.
+
+    yt-dlp exposes avatars under several keys depending on the
+    extractor: ``uploader_thumbnail`` (sometimes a URL string,
+    sometimes a list of {url, ...} dicts), ``channel_thumbnail``
+    (YouTube), or inside the general ``thumbnails`` list filtered
+    by author context (rare). Preference order is
+    explicit-single → list-first → None.
+    """
+    candidate = info.get("uploader_thumbnail") or info.get("channel_thumbnail")
+    if isinstance(candidate, str):
+        return _str_or_none(candidate)
+    if isinstance(candidate, list) and candidate:
+        first = candidate[0]
+        if isinstance(first, dict):
+            return _str_or_none(first.get("url"))
+        if isinstance(first, str):
+            return _str_or_none(first)
+    return None
+
+
+def _extract_uploader_verified(info: dict[str, Any]) -> bool | None:
+    """Resolve the verified-badge flag from a yt-dlp info_dict.
+
+    Exposed inconsistently across extractors; ``None`` is a legit
+    outcome. Tried keys: ``channel_verified``, ``uploader_verified``.
+    """
+    for key in ("channel_verified", "uploader_verified"):
+        value = info.get(key)
+        if isinstance(value, bool):
+            return value
+    return None

@@ -878,3 +878,119 @@ class TestProbe:
         result = YtdlpDownloader().probe("https://example.com/x")
         assert result.status == ProbeStatus.ERROR
         assert "boom" in result.detail
+
+
+# ---------------------------------------------------------------------------
+# M006/S01 — ProbeResult creator fields (T12)
+# ---------------------------------------------------------------------------
+
+
+class TestProbeCreatorExtraction:
+    """Verify that YtdlpDownloader.probe populates the 6 new creator
+    fields added to ProbeResult in S01-P01."""
+
+    def test_uploader_fields_populated_from_info_dict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Core creator fields are extracted from a full info_dict."""
+        from vidscope.ports import ProbeResult, ProbeStatus
+
+        info: dict[str, Any] = {
+            "id": "UC_abc",
+            "title": "My video",
+            "uploader": "AliceChannel",
+            "uploader_id": "UC_aliceid",
+            "uploader_url": "https://www.youtube.com/@Alice",
+            "channel_follower_count": 42000,
+            "uploader_thumbnail": "https://yt3.ggpht.com/alice.jpg",
+            "channel_verified": True,
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_args, **_kwargs: FakeYoutubeDL(info=info),
+        )
+
+        result = YtdlpDownloader().probe("https://www.youtube.com/watch?v=UC_abc")
+
+        assert result.status == ProbeStatus.OK
+        assert result.uploader == "AliceChannel"
+        assert result.uploader_id == "UC_aliceid"
+        assert result.uploader_url == "https://www.youtube.com/@Alice"
+        assert result.channel_follower_count == 42000
+        assert result.uploader_thumbnail == "https://yt3.ggpht.com/alice.jpg"
+        assert result.uploader_verified is True
+
+    def test_uploader_thumbnail_as_list_of_dicts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When uploader_thumbnail is a list of dicts, the first url is used."""
+        from vidscope.ports import ProbeStatus
+
+        info: dict[str, Any] = {
+            "id": "v2",
+            "title": "Bob video",
+            "uploader": "BobCreator",
+            "uploader_id": "bob_id",
+            "uploader_thumbnail": [
+                {"url": "https://yt3.ggpht.com/bob_small.jpg", "width": 48},
+                {"url": "https://yt3.ggpht.com/bob_large.jpg", "width": 240},
+            ],
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_args, **_kwargs: FakeYoutubeDL(info=info),
+        )
+
+        result = YtdlpDownloader().probe("https://www.youtube.com/watch?v=v2")
+
+        assert result.status == ProbeStatus.OK
+        assert result.uploader_thumbnail == "https://yt3.ggpht.com/bob_small.jpg"
+
+    def test_channel_follower_count_fallback_and_none_verified(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """channel_followers is used as fallback; uploader_verified=None
+        when neither channel_verified nor uploader_verified is in info."""
+        from vidscope.ports import ProbeStatus
+
+        info: dict[str, Any] = {
+            "id": "v3",
+            "title": "TikTok video",
+            "uploader": "TikToker",
+            "uploader_id": "tt_123",
+            "channel_followers": 9999,
+            # No channel_verified / uploader_verified key → None
+        }
+        _install_fake(
+            monkeypatch,
+            lambda *_args, **_kwargs: FakeYoutubeDL(info=info),
+        )
+
+        result = YtdlpDownloader().probe("https://www.tiktok.com/@TikToker/video/v3")
+
+        assert result.status == ProbeStatus.OK
+        assert result.channel_follower_count == 9999
+        assert result.uploader_verified is None
+
+    def test_all_creator_fields_none_when_info_lacks_them(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Minimal info_dict (only id + title) leaves all creator fields None —
+        backward-compatible with existing probe callers."""
+        from vidscope.ports import ProbeStatus
+
+        info: dict[str, Any] = {"id": "minimal", "title": "Minimal"}
+        _install_fake(
+            monkeypatch,
+            lambda *_args, **_kwargs: FakeYoutubeDL(info=info),
+        )
+
+        result = YtdlpDownloader().probe("https://www.instagram.com/reel/minimal/")
+
+        assert result.status == ProbeStatus.OK
+        assert result.uploader is None
+        assert result.uploader_id is None
+        assert result.uploader_url is None
+        assert result.channel_follower_count is None
+        assert result.uploader_thumbnail is None
+        assert result.uploader_verified is None
