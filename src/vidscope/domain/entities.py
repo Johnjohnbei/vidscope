@@ -22,9 +22,11 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from vidscope.domain.values import (
+    CreatorId,
     Language,
     Platform,
     PlatformId,
+    PlatformUserId,
     RunStatus,
     StageName,
     VideoId,
@@ -32,6 +34,7 @@ from vidscope.domain.values import (
 
 __all__ = [
     "Analysis",
+    "Creator",
     "Frame",
     "PipelineRun",
     "Transcript",
@@ -206,3 +209,39 @@ class WatchRefresh:
         if self.finished_at is None:
             return None
         return self.finished_at - self.started_at
+
+
+@dataclass(frozen=True, slots=True)
+class Creator:
+    """A content creator — the person/account that uploaded a video.
+
+    Identity anchors on ``(platform, platform_user_id)`` — the
+    platform-issued stable id (yt-dlp's ``uploader_id``) that survives
+    account renames (per D-01). ``handle`` is the human-facing @-name
+    which MAY change; the repository preserves rename history by
+    updating the row in place. ``id`` is a surrogate autoincrement
+    populated by the repository on upsert.
+
+    ``is_orphan`` is set to ``True`` by the backfill script when
+    re-probing yt-dlp returns NOT_FOUND or AUTH_REQUIRED: every video
+    still gets an FK populated, no data is lost, and the flag
+    surfaces later in listings (per D-02). ``avatar_url`` is a URL
+    string only — no image download, no MediaStorage write (per D-05).
+    ``follower_count`` is the current scalar value only — temporal
+    engagement lives in M009's ``video_stats`` / future
+    ``creator_stats`` (per D-04).
+    """
+
+    platform: Platform
+    platform_user_id: PlatformUserId
+    id: CreatorId | None = None
+    handle: str | None = None
+    display_name: str | None = None
+    profile_url: str | None = None
+    avatar_url: str | None = None
+    follower_count: int | None = None
+    is_verified: bool | None = None
+    is_orphan: bool = False
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    created_at: datetime | None = None

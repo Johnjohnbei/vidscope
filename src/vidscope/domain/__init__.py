@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from vidscope.domain.entities import (
     Analysis,
+    Creator,
     Frame,
     PipelineRun,
     Transcript,
@@ -34,9 +35,11 @@ from vidscope.domain.errors import (
 )
 from vidscope.domain.platform_detection import detect_platform
 from vidscope.domain.values import (
+    CreatorId,
     Language,
     Platform,
     PlatformId,
+    PlatformUserId,
     RunStatus,
     StageName,
     VideoId,
@@ -45,6 +48,7 @@ from vidscope.domain.values import (
 __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values / helpers), not alphabetized
     # entities
     "Analysis",
+    "Creator",
     "Frame",
     "PipelineRun",
     "Transcript",
@@ -64,9 +68,11 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "StorageError",
     "TranscriptionError",
     # values
+    "CreatorId",
     "Language",
     "Platform",
     "PlatformId",
+    "PlatformUserId",
     "RunStatus",
     "StageName",
     "VideoId",
