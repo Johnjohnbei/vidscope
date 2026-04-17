@@ -11,7 +11,12 @@ from rich.table import Table
 from vidscope.application.get_creator import GetCreatorUseCase
 from vidscope.application.list_creator_videos import ListCreatorVideosUseCase
 from vidscope.application.list_creators import ListCreatorsUseCase
-from vidscope.cli._support import acquire_container, console, fail_user, handle_domain_errors
+from vidscope.cli._support import (
+    acquire_container,
+    console,
+    fail_user,
+    handle_domain_errors,
+)
 from vidscope.domain.values import Platform
 
 __all__ = ["creator_app"]
@@ -44,8 +49,9 @@ def _parse_platform(value: str | None) -> Platform | None:
         return Platform(v)
     except ValueError:
         raise typer.BadParameter(
-            f"'{value}' is not a valid platform. Choose from: {', '.join(_PLATFORM_CHOICES)}"
-        )
+            f"'{value}' is not a valid platform. "
+            f"Choose from: {', '.join(_PLATFORM_CHOICES)}"
+        ) from None
 
 
 @creator_app.command("show")
@@ -65,6 +71,18 @@ def show_creator(
         raise fail_user(f"no creator '{handle}' found on {platform.value}")
 
     c = result.creator
+    if c.is_verified:
+        verified_str = "yes"
+    elif c.is_verified is False:
+        verified_str = "no"
+    else:
+        verified_str = "-"
+    first_seen = (
+        c.first_seen_at.strftime("%Y-%m-%d") if c.first_seen_at else "-"
+    )
+    last_seen = (
+        c.last_seen_at.strftime("%Y-%m-%d") if c.last_seen_at else "-"
+    )
     lines = [
         f"[bold]id:[/bold] {int(c.id) if c.id is not None else '-'}",
         f"[bold]platform:[/bold] {c.platform.value}",
@@ -75,10 +93,10 @@ def show_creator(
             if c.follower_count
             else "[bold]followers:[/bold] -"
         ),
-        f"[bold]verified:[/bold] {'yes' if c.is_verified else 'no' if c.is_verified is False else '-'}",
+        f"[bold]verified:[/bold] {verified_str}",
         f"[bold]profile_url:[/bold] {c.profile_url or '-'}",
-        f"[bold]first_seen:[/bold] {c.first_seen_at.strftime('%Y-%m-%d') if c.first_seen_at else '-'}",
-        f"[bold]last_seen:[/bold] {c.last_seen_at.strftime('%Y-%m-%d') if c.last_seen_at else '-'}",
+        f"[bold]first_seen:[/bold] {first_seen}",
+        f"[bold]last_seen:[/bold] {last_seen}",
     ]
     console.print(
         Panel.fit(
@@ -109,12 +127,17 @@ def list_creators(
     with handle_domain_errors():
         container = acquire_container()
         use_case = ListCreatorsUseCase(unit_of_work_factory=container.unit_of_work)
-        result = use_case.execute(platform=platform, min_followers=min_followers, limit=limit)
+        result = use_case.execute(
+            platform=platform, min_followers=min_followers, limit=limit
+        )
 
     console.print(f"[bold]total creators:[/bold] {result.total}")
 
     if not result.creators:
-        console.print("[dim]No creators yet. Run [bold]vidscope add <url>[/bold] to ingest a video.[/dim]")
+        console.print(
+            "[dim]No creators yet. "
+            "Run [bold]vidscope add <url>[/bold] to ingest a video.[/dim]"
+        )
         return
 
     table = Table(title=f"Creators ({len(result.creators)})", show_header=True)
@@ -127,9 +150,18 @@ def list_creators(
     table.add_column("last_seen")
 
     for c in result.creators:
-        followers = f"{c.follower_count:,}" if c.follower_count is not None else "-"
-        verified = "yes" if c.is_verified else "no" if c.is_verified is False else "-"
-        last_seen = c.last_seen_at.strftime("%Y-%m-%d") if c.last_seen_at else "-"
+        followers = (
+            f"{c.follower_count:,}" if c.follower_count is not None else "-"
+        )
+        if c.is_verified:
+            verified = "yes"
+        elif c.is_verified is False:
+            verified = "no"
+        else:
+            verified = "-"
+        last_seen = (
+            c.last_seen_at.strftime("%Y-%m-%d") if c.last_seen_at else "-"
+        )
         table.add_row(
             str(int(c.id)) if c.id else "-",
             c.platform.value,
@@ -173,7 +205,10 @@ def creator_videos(
         console.print("[dim]No videos yet for this creator.[/dim]")
         return
 
-    table = Table(title=f"Videos by {creator.handle or handle} ({len(result.videos)})", show_header=True)
+    table = Table(
+        title=f"Videos by {creator.handle or handle} ({len(result.videos)})",
+        show_header=True,
+    )
     table.add_column("id", justify="right", style="dim")
     table.add_column("platform")
     table.add_column("title", overflow="fold")
