@@ -113,6 +113,18 @@ class VideoRepository(Protocol):
         """Return the ``limit`` most recently ingested videos, newest first."""
         ...
 
+    def list_by_creator(
+        self, creator_id: CreatorId, *, limit: int = 50
+    ) -> list[Video]:
+        """Return up to ``limit`` videos whose ``creator_id`` FK matches
+        ``creator_id``, ordered most recently ingested first.
+
+        Returns an empty list when no videos are linked to this creator.
+        Callers should resolve the creator by handle first via
+        :meth:`CreatorRepository.find_by_handle`.
+        """
+        ...
+
     def count(self) -> int:
         """Return the total number of videos in the store."""
         ...

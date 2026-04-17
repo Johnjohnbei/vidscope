@@ -15,7 +15,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 
 from vidscope.adapters.sqlite.schema import videos as videos_table
-from vidscope.domain import Creator, Platform, PlatformId, Video, VideoId
+from vidscope.domain import Creator, CreatorId, Platform, PlatformId, Video, VideoId
 from vidscope.domain.errors import StorageError
 
 __all__ = ["VideoRepositorySQLite"]
@@ -125,6 +125,22 @@ class VideoRepositorySQLite:
         rows = (
             self._conn.execute(
                 select(videos_table)
+                .order_by(videos_table.c.created_at.desc())
+                .limit(limit)
+            )
+            .mappings()
+            .all()
+        )
+        return [_row_to_video(row) for row in rows]
+
+    def list_by_creator(
+        self, creator_id: CreatorId, *, limit: int = 50
+    ) -> list[Video]:
+        """Return up to ``limit`` videos for ``creator_id``, newest first."""
+        rows = (
+            self._conn.execute(
+                select(videos_table)
+                .where(videos_table.c.creator_id == int(creator_id))
                 .order_by(videos_table.c.created_at.desc())
                 .limit(limit)
             )
