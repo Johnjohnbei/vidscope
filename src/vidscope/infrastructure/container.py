@@ -47,7 +47,7 @@ from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from vidscope.adapters.text import RegexLinkExtractor
-from vidscope.adapters.vision import RapidOcrEngine
+from vidscope.adapters.vision import HaarcascadeFaceCounter, RapidOcrEngine
 from vidscope.adapters.whisper import FasterWhisperTranscriber
 from vidscope.adapters.ytdlp import YtdlpDownloader
 from vidscope.infrastructure.analyzer_registry import build_analyzer
@@ -229,8 +229,13 @@ def build_container(config: Config | None = None) -> Container:
     # returns [] for every frame and the stage emits SKIPPED
     # (see VisualIntelligenceStage.execute).
     ocr_engine = RapidOcrEngine()
+    # HaarcascadeFaceCounter lazy-loads cv2 on first call — safe at
+    # container build time even when opencv-python-headless is not
+    # installed (returns 0 for every frame in that case).
+    face_counter = HaarcascadeFaceCounter()
     visual_intelligence_stage = VisualIntelligenceStage(
         ocr_engine=ocr_engine,
+        face_counter=face_counter,
         link_extractor=link_extractor,
         media_storage=media_storage,
     )
