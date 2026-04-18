@@ -26,6 +26,12 @@ from vidscope.adapters.sqlite.creator_repository import (
     CreatorRepositorySQLite,
 )
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
+from vidscope.adapters.sqlite.hashtag_repository import (
+    HashtagRepositorySQLite,
+)
+from vidscope.adapters.sqlite.mention_repository import (
+    MentionRepositorySQLite,
+)
 from vidscope.adapters.sqlite.pipeline_run_repository import (
     PipelineRunRepositorySQLite,
 )
@@ -45,6 +51,8 @@ from vidscope.ports import (
     AnalysisRepository,
     CreatorRepository,
     FrameRepository,
+    HashtagRepository,
+    MentionRepository,
     PipelineRunRepository,
     SearchIndex,
     TranscriptRepository,
@@ -79,6 +87,8 @@ class SqliteUnitOfWork:
         self.transcripts: TranscriptRepository
         self.frames: FrameRepository
         self.analyses: AnalysisRepository
+        self.hashtags: HashtagRepository
+        self.mentions: MentionRepository
         self.pipeline_runs: PipelineRunRepository
         self.search_index: SearchIndex
         self.watch_accounts: WatchAccountRepository
@@ -95,6 +105,8 @@ class SqliteUnitOfWork:
         self.transcripts = TranscriptRepositorySQLite(self._connection)
         self.frames = FrameRepositorySQLite(self._connection)
         self.analyses = AnalysisRepositorySQLite(self._connection)
+        self.hashtags = HashtagRepositorySQLite(self._connection)
+        self.mentions = MentionRepositorySQLite(self._connection)
         self.pipeline_runs = PipelineRunRepositorySQLite(self._connection)
         self.search_index = SearchIndexSQLite(self._connection)
         self.watch_accounts = WatchAccountRepositorySQLite(self._connection)

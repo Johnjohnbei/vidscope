@@ -32,6 +32,8 @@ from vidscope.ports.repositories import (
     AnalysisRepository,
     CreatorRepository,
     FrameRepository,
+    HashtagRepository,
+    MentionRepository,
     PipelineRunRepository,
     TranscriptRepository,
     VideoRepository,
@@ -63,6 +65,8 @@ class UnitOfWork(Protocol):
     transcripts: TranscriptRepository
     frames: FrameRepository
     analyses: AnalysisRepository
+    hashtags: HashtagRepository
+    mentions: MentionRepository
     pipeline_runs: PipelineRunRepository
     search_index: SearchIndex
     watch_accounts: WatchAccountRepository

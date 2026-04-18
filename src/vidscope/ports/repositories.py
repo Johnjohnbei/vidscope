@@ -33,6 +33,8 @@ from vidscope.domain import (
     Creator,
     CreatorId,
     Frame,
+    Hashtag,
+    Mention,
     PipelineRun,
     Platform,
     PlatformId,
@@ -50,6 +52,8 @@ __all__ = [
     "AnalysisRepository",
     "CreatorRepository",
     "FrameRepository",
+    "HashtagRepository",
+    "MentionRepository",
     "PipelineRunRepository",
     "TranscriptRepository",
     "VideoRepository",
@@ -376,4 +380,88 @@ class CreatorRepository(Protocol):
 
     def count(self) -> int:
         """Return the total number of creators in the store."""
+        ...
+
+
+@runtime_checkable
+class HashtagRepository(Protocol):
+    """Persistence for :class:`~vidscope.domain.entities.Hashtag`.
+
+    Hashtags are stored in a side table keyed by ``(video_id, tag)``.
+    ``tag`` is the canonical lowercase form WITHOUT the leading ``#``
+    (per M007 D-04). The repository applies the canonicalisation
+    itself — callers pass raw tags from yt-dlp's ``info["tags"]``
+    (already lowercase-ish but not always) and the adapter calls
+    ``.lower().lstrip("#")`` before writing.
+    """
+
+    def replace_for_video(self, video_id: VideoId, tags: list[str]) -> None:
+        """Replace every hashtag row for ``video_id`` with ``tags``.
+
+        Implemented as DELETE then INSERT — idempotent on re-ingest,
+        the whole list is the new truth. Empty ``tags`` removes every
+        row for the video. Each tag is canonicalised by the adapter
+        (lowercase + strip leading '#') before insertion.
+        """
+        ...
+
+    def list_for_video(self, video_id: VideoId) -> list[Hashtag]:
+        """Return every hashtag row for ``video_id`` ordered by id asc.
+
+        Empty list on miss — never raises.
+        """
+        ...
+
+    def find_video_ids_by_tag(
+        self, tag: str, *, limit: int = 50
+    ) -> list[VideoId]:
+        """Return up to ``limit`` video ids whose hashtags include ``tag``.
+
+        ``tag`` is canonicalised by the repository before comparison so
+        callers can pass ``"#Coding"`` or ``"coding"`` interchangeably
+        (per D-04). Used by the search facet ``--hashtag`` via
+        EXISTS subquery (M007/S04).
+        """
+        ...
+
+
+@runtime_checkable
+class MentionRepository(Protocol):
+    """Persistence for :class:`~vidscope.domain.entities.Mention`.
+
+    Mentions are stored in a side table keyed by
+    ``(video_id, handle)``. ``handle`` is the canonical lowercase form
+    WITHOUT the leading ``@``. ``platform`` is optional per D-03. No
+    ``creator_id`` FK — mention↔creator linkage is derivable via JOIN
+    in M011.
+    """
+
+    def replace_for_video(
+        self, video_id: VideoId, mentions: list[Mention]
+    ) -> None:
+        """Replace every mention row for ``video_id`` with ``mentions``.
+
+        Implemented as DELETE then INSERT — idempotent on re-ingest.
+        Empty list removes every row for the video. The repository
+        canonicalises each mention's ``handle`` (lowercase + strip
+        leading '@') before insertion.
+        """
+        ...
+
+    def list_for_video(self, video_id: VideoId) -> list[Mention]:
+        """Return every mention row for ``video_id`` ordered by id asc.
+
+        Empty list on miss — never raises.
+        """
+        ...
+
+    def find_video_ids_by_handle(
+        self, handle: str, *, limit: int = 50
+    ) -> list[VideoId]:
+        """Return up to ``limit`` video ids mentioning ``handle``.
+
+        ``handle`` is canonicalised before comparison (case-insensitive
+        per D-04). Used by the search facet ``--mention`` via EXISTS
+        subquery (M007/S04).
+        """
         ...
