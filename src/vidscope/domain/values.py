@@ -114,6 +114,7 @@ class StageName(StrEnum):
     FRAMES = "frames"
     ANALYZE = "analyze"
     INDEX = "index"
+    STATS = "stats"
 
 
 class RunStatus(StrEnum):
