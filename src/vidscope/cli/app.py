@@ -20,6 +20,7 @@ from vidscope.cli.commands import (
     add_command,
     cookies_app,
     doctor_command,
+    explain_command,
     list_command,
     mcp_app,
     refresh_stats_command,
@@ -105,3 +106,7 @@ app.command(
     "trending",
     help="Rank ingested videos by views velocity (--since mandatory).",
 )(trending_command)
+app.command(
+    "explain",
+    help="Show reasoning and per-dimension scores of a video's latest analysis.",
+)(explain_command)

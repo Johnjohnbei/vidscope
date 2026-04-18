@@ -139,6 +139,14 @@ def stub_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(fe_module.subprocess, "run", fake_ffmpeg_run)
 
 
+def test_app_help_lists_explain_command() -> None:
+    from vidscope.cli.app import app
+    from typer.testing import CliRunner
+    res = CliRunner().invoke(app, ["--help"])
+    assert res.exit_code == 0
+    assert "explain" in res.stdout.lower()
+
+
 class TestHelpAndVersion:
     def test_help_lists_every_command(self, runner: CliRunner) -> None:
         result = runner.invoke(app, ["--help"])
