@@ -367,7 +367,8 @@ class TestWatch:
         # if it ever does get called (it shouldn't here — empty watchlist)
         result = runner.invoke(app, ["watch", "refresh"])
         assert result.exit_code == EXIT_OK
-        assert "checked 0 accounts" in result.stdout
+        # M009/S03: new combined-summary format uses "accounts=N new_videos=M"
+        assert "accounts=0" in result.stdout
         assert "0" in result.stdout
 
     def test_watch_refresh_with_one_account(
@@ -407,10 +408,11 @@ class TestWatch:
         # Refresh — should ingest 1 new video via the stubbed pipeline
         result = runner.invoke(app, ["watch", "refresh"])
         assert result.exit_code == EXIT_OK
-        assert "checked 1 accounts" in result.stdout
+        # M009/S03: new combined-summary format uses "accounts=N new_videos=M"
+        assert "accounts=1" in result.stdout
         assert "1" in result.stdout  # one new video
 
         # Second refresh: 0 new (idempotent)
         again = runner.invoke(app, ["watch", "refresh"])
         assert again.exit_code == EXIT_OK
-        assert "checked 1 accounts" in again.stdout
+        assert "accounts=1" in again.stdout

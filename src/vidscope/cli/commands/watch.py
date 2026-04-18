@@ -16,6 +16,10 @@ from __future__ import annotations
 import typer
 from rich.table import Table
 
+from vidscope.application.refresh_stats import (
+    RefreshStatsForWatchlistUseCase,
+    RefreshStatsUseCase,
+)
 from vidscope.application.watchlist import (
     AddWatchedAccountUseCase,
     ListWatchedAccountsUseCase,
@@ -177,47 +181,103 @@ def refresh(
         max=100,
     ),
 ) -> None:
-    """Fetch new videos for every watched account."""
+    """Fetch new videos for every watched account and refresh their stats."""
     with handle_domain_errors():
         container = acquire_container()
-        use_case = RefreshWatchlistUseCase(
+
+        # Step 1 — M003: ingest new videos for every watched account
+        watch_uc = RefreshWatchlistUseCase(
             unit_of_work_factory=container.unit_of_work,
             pipeline_runner=container.pipeline_runner,
             downloader=container.downloader,
             clock=container.clock,
             per_account_limit=limit,
         )
-        summary = use_case.execute()
+        watch_summary = watch_uc.execute()
 
+        # Step 2 — M009/S03: refresh stats for every video of every watched creator.
+        # Wrapped in an isolated try so a global stats failure does NOT hide the
+        # watch summary already computed above (T-ISO-03).
+        stats_result = None
+        stats_error: str | None = None
+        try:
+            stats_uc = RefreshStatsForWatchlistUseCase(
+                refresh_stats=RefreshStatsUseCase(
+                    stats_stage=container.stats_stage,
+                    unit_of_work_factory=container.unit_of_work,
+                    clock=container.clock,
+                ),
+                unit_of_work_factory=container.unit_of_work,
+            )
+            stats_result = stats_uc.execute()
+        except Exception as exc:  # noqa: BLE001 — resilience (T-ISO-03)
+            stats_error = f"stats refresh failed: {exc}"
+
+        _render_combined_summary(watch_summary, stats_result, stats_error)
+
+
+def _render_combined_summary(
+    watch_summary: object,
+    stats_result: object,
+    stats_error: str | None,
+) -> None:
+    """Print the combined watch+stats refresh summary.
+
+    Matches D-05 requirement: both counters (new_videos + stats_refreshed)
+    visible in one output. ASCII-only — no Unicode glyphs.
+    """
+    from vidscope.application.watchlist import RefreshSummary
+    from vidscope.application.refresh_stats import RefreshStatsForWatchlistResult
+
+    assert isinstance(watch_summary, RefreshSummary)
+
+    console.print(
+        f"[bold]watch refresh:[/bold] "
+        f"accounts={watch_summary.accounts_checked} "
+        f"new_videos={watch_summary.new_videos_ingested}"
+    )
+
+    if stats_result is not None:
+        assert isinstance(stats_result, RefreshStatsForWatchlistResult)
         console.print(
-            f"[bold]watchlist refresh:[/bold] "
-            f"checked {summary.accounts_checked} accounts, "
-            f"ingested [bold green]{summary.new_videos_ingested}[/bold green] "
-            f"new videos"
+            f"[bold]stats refresh:[/bold] "
+            f"videos={stats_result.videos_checked} "
+            f"refreshed={stats_result.stats_refreshed} "
+            f"failed={stats_result.failed}"
         )
 
-        if summary.per_account:
-            table = Table(
-                title="Per-account results",
-                show_header=True,
-            )
-            table.add_column("platform")
-            table.add_column("handle")
-            table.add_column("new", justify="right")
-            table.add_column("error", overflow="fold")
-            for outcome in summary.per_account:
-                table.add_row(
-                    outcome.platform.value,
-                    outcome.handle,
-                    str(outcome.new_videos),
-                    outcome.error or "",
-                )
-            console.print(table)
+    if stats_error is not None:
+        console.print(f"[red]stats error:[/red] {stats_error}")
 
-        if summary.errors:
-            console.print(
-                f"[bold yellow]warnings:[/bold yellow] "
-                f"{len(summary.errors)} error(s) during refresh"
+    # Per-account detail table (M003 output, preserved)
+    if watch_summary.per_account:
+        table = Table(title="Per-account results", show_header=True)
+        table.add_column("platform")
+        table.add_column("handle")
+        table.add_column("new", justify="right")
+        table.add_column("error", overflow="fold")
+        for outcome in watch_summary.per_account:
+            table.add_row(
+                outcome.platform.value,
+                outcome.handle,
+                str(outcome.new_videos),
+                outcome.error or "",
             )
-            for err in summary.errors:
-                console.print(f"  [yellow]•[/yellow] {err}")
+        console.print(table)
+
+    # Watch-level errors (M003 output, preserved)
+    if watch_summary.errors:
+        console.print(
+            f"[bold yellow]warnings:[/bold yellow] "
+            f"{len(watch_summary.errors)} error(s) during watch refresh"
+        )
+        for err in watch_summary.errors:
+            console.print(f"  [yellow]-[/yellow] {err}")
+
+    # Stats-level per-video errors (first 5 only)
+    if stats_result is not None:
+        assert isinstance(stats_result, RefreshStatsForWatchlistResult)
+        if stats_result.errors:
+            console.print(f"[dim]stats errors (first 5 of {len(stats_result.errors)}):[/dim]")
+            for e in stats_result.errors[:5]:
+                console.print(f"  - {e}")
