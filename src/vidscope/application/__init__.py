@@ -21,6 +21,10 @@ Design rules
 
 from __future__ import annotations
 
+from vidscope.application.explain_analysis import (
+    ExplainAnalysisResult,
+    ExplainAnalysisUseCase,
+)
 from vidscope.application.get_status import GetStatusResult, GetStatusUseCase
 from vidscope.application.ingest_video import IngestResult, IngestVideoUseCase
 from vidscope.application.list_trending import ListTrendingUseCase, TrendingEntry
@@ -35,6 +39,10 @@ from vidscope.application.list_videos import ListVideosResult, ListVideosUseCase
 from vidscope.application.search_library import (
     SearchLibraryResult,
     SearchLibraryUseCase,
+)
+from vidscope.application.search_videos import (
+    SearchFilters,
+    SearchVideosUseCase,
 )
 from vidscope.application.show_video import ShowVideoResult, ShowVideoUseCase
 from vidscope.application.suggest_related import (
@@ -57,6 +65,8 @@ from vidscope.application.watchlist import (
 __all__ = [
     "AddWatchedAccountUseCase",
     "AddedAccountResult",
+    "ExplainAnalysisResult",
+    "ExplainAnalysisUseCase",
     "GetStatusResult",
     "GetStatusUseCase",
     "IngestResult",
@@ -77,8 +87,10 @@ __all__ = [
     "RefreshWatchlistUseCase",
     "RemoveWatchedAccountUseCase",
     "RemovedAccountResult",
+    "SearchFilters",
     "SearchLibraryResult",
     "SearchLibraryUseCase",
+    "SearchVideosUseCase",
     "ShowVideoResult",
     "ShowVideoUseCase",
     "SuggestRelatedResult",
