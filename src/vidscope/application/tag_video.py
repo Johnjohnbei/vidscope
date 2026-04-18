@@ -42,11 +42,18 @@ class UntagVideoUseCase:
         self._uow = unit_of_work_factory
 
     def execute(self, video_id: int, name: str) -> bool:
-        """Return True if an assignment was actually removed."""
+        """Return True if an assignment was actually removed.
+
+        Returns False when the tag does not exist or when the video did not
+        carry the tag in the first place (no-op unassign).
+        """
         vid = VideoId(int(video_id))
         with self._uow() as uow:
             tag = uow.tags.get_by_name(name)
             if tag is None or tag.id is None:
+                return False
+            assigned_tags = uow.tags.list_for_video(vid)
+            if not any(t.id == tag.id for t in assigned_tags):
                 return False
             uow.tags.unassign(vid, tag.id)
             return True
