@@ -26,6 +26,9 @@ from vidscope.adapters.sqlite.creator_repository import (
     CreatorRepositorySQLite,
 )
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
+from vidscope.adapters.sqlite.frame_text_repository import (
+    FrameTextRepositorySQLite,
+)
 from vidscope.adapters.sqlite.hashtag_repository import (
     HashtagRepositorySQLite,
 )
@@ -109,6 +112,7 @@ class SqliteUnitOfWork:
         self.creators = CreatorRepositorySQLite(self._connection)
         self.transcripts = TranscriptRepositorySQLite(self._connection)
         self.frames = FrameRepositorySQLite(self._connection)
+        self.frame_texts = FrameTextRepositorySQLite(self._connection)
         self.analyses = AnalysisRepositorySQLite(self._connection)
         self.hashtags = HashtagRepositorySQLite(self._connection)
         self.mentions = MentionRepositorySQLite(self._connection)

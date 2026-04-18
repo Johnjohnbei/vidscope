@@ -340,6 +340,40 @@ class TestM007Schema:
         assert "music_artist" in cols
 
 
+class TestM008Schema:
+    """M008/S01-P01: frame_texts table, FTS5, thumbnail_key/content_shape columns."""
+
+    def test_videos_has_thumbnail_key_column(self, engine: Engine) -> None:
+        cols = {c["name"] for c in inspect(engine).get_columns("videos")}
+        assert "thumbnail_key" in cols
+
+    def test_videos_has_content_shape_column(self, engine: Engine) -> None:
+        cols = {c["name"] for c in inspect(engine).get_columns("videos")}
+        assert "content_shape" in cols
+
+    def test_frame_texts_table_exists(self, engine: Engine) -> None:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='frame_texts'")
+            ).scalar()
+        assert result == "frame_texts"
+
+    def test_frame_texts_fts_exists(self, engine: Engine) -> None:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name='frame_texts_fts'"
+                )
+            ).scalar()
+        assert result == "frame_texts_fts"
+
+    def test_init_db_is_idempotent_on_m008_columns(self, engine: Engine) -> None:
+        """Calling init_db twice must not raise with M008 helpers."""
+        init_db(engine)
+        init_db(engine)
+
+
 class TestLinksSchema:
     """M007/S02-P01: links table + indexes."""
 

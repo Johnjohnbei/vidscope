@@ -57,6 +57,7 @@ from sqlalchemy.engine import Connection
 __all__ = [
     "analyses",
     "creators",
+    "frame_texts",
     "frames",
     "hashtags",
     "init_db",
@@ -106,6 +107,8 @@ videos = Table(
     Column("description", Text, nullable=True),
     Column("music_track", String(255), nullable=True),
     Column("music_artist", String(255), nullable=True),
+    Column("thumbnail_key", Text, nullable=True),
+    Column("content_shape", String(32), nullable=True),
 )
 
 transcripts = Table(
@@ -139,6 +142,38 @@ frames = Table(
     Column("is_keyframe", Boolean, nullable=False, default=False),
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
 )
+
+# M008: frame OCR text side table (R047). video_id is denormalised so the
+# FTS5 virtual table can filter by video without a JOIN (same pattern as
+# search_index). FK cascade on both frames.id and videos.id.
+frame_texts = Table(
+    "frame_texts",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "video_id",
+        Integer,
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "frame_id",
+        Integer,
+        ForeignKey("frames.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("text", Text, nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("bbox", Text, nullable=True),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utc_now,
+    ),
+)
+Index("idx_frame_texts_video_id", frame_texts.c.video_id)
+Index("idx_frame_texts_frame_id", frame_texts.c.frame_id)
 
 analyses = Table(
     "analyses",
@@ -338,9 +373,18 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
 )
 """
 
+_FTS5_FRAME_TEXTS_SQL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS frame_texts_fts USING fts5(
+    frame_text_id UNINDEXED,
+    video_id UNINDEXED,
+    text,
+    tokenize = 'unicode61 remove_diacritics 2'
+)
+"""
+
 
 def init_db(engine: Engine) -> None:
-    """Create every table and the FTS5 virtual table. Idempotent.
+    """Create every table and the FTS5 virtual tables. Idempotent.
 
     Safe to call on every startup — :meth:`MetaData.create_all` uses
     ``CREATE TABLE IF NOT EXISTS`` under the hood, and the FTS5 DDL
@@ -350,8 +394,11 @@ def init_db(engine: Engine) -> None:
     metadata.create_all(engine)
     with engine.begin() as conn:
         _create_fts5(conn)
+        _create_frame_texts_fts(conn)
         _ensure_videos_creator_id(conn)
         _ensure_videos_metadata_columns(conn)
+        _ensure_videos_visual_columns(conn)
+        _ensure_frame_texts_table(conn)
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -412,6 +459,74 @@ def _ensure_videos_metadata_columns(conn: Connection) -> None:
         conn.execute(
             text("ALTER TABLE videos ADD COLUMN music_artist VARCHAR(255)")
         )
+
+
+def _create_frame_texts_fts(conn: Connection) -> None:
+    """Execute the frame_texts_fts FTS5 DDL on an existing connection."""
+    conn.execute(text(_FTS5_FRAME_TEXTS_SQL))
+
+
+def _ensure_videos_visual_columns(conn: Connection) -> None:
+    """Add M008 visual columns on upgraded databases. Idempotent.
+
+    M008/S01 adds two nullable columns on ``videos``:
+    ``thumbnail_key`` (storage key for the canonical thumbnail) and
+    ``content_shape`` (one of ``talking_head / broll / mixed /
+    unknown``). On fresh installs the Core ``metadata.create_all``
+    path declares the columns inline; on pre-M008 databases we must
+    explicitly ALTER.
+    """
+    cols = {
+        row[1]
+        for row in conn.execute(text("PRAGMA table_info(videos)"))
+    }
+    if "thumbnail_key" not in cols:
+        conn.execute(text("ALTER TABLE videos ADD COLUMN thumbnail_key TEXT"))
+    if "content_shape" not in cols:
+        conn.execute(
+            text("ALTER TABLE videos ADD COLUMN content_shape VARCHAR(32)")
+        )
+
+
+def _ensure_frame_texts_table(conn: Connection) -> None:
+    """Create frame_texts table on upgraded databases. Idempotent.
+
+    Fresh installs get the table via ``metadata.create_all``; pre-M008
+    databases hit this path.
+    """
+    tables = {
+        row[0]
+        for row in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        )
+    }
+    if "frame_texts" in tables:
+        return
+    conn.execute(
+        text(
+            "CREATE TABLE frame_texts ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE, "
+            "frame_id INTEGER NOT NULL REFERENCES frames(id) ON DELETE CASCADE, "
+            "text TEXT NOT NULL, "
+            "confidence REAL NOT NULL, "
+            "bbox TEXT, "
+            "created_at DATETIME NOT NULL"
+            ")"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_frame_texts_video_id "
+            "ON frame_texts(video_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_frame_texts_frame_id "
+            "ON frame_texts(frame_id)"
+        )
+    )
 
 
 # Re-export a type alias used by tests that want to introspect row maps
