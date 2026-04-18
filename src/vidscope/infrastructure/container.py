@@ -57,6 +57,7 @@ from vidscope.pipeline.stages import (
     FramesStage,
     IndexStage,
     IngestStage,
+    StatsStage,
     TranscribeStage,
 )
 from vidscope.ports.clock import Clock
@@ -130,6 +131,7 @@ class Container:
     frame_extractor: FrameExtractor
     analyzer: Analyzer
     stats_probe: StatsProbe
+    stats_stage: StatsStage
     pipeline_runner: PipelineRunner
     clock: Clock = field(default_factory=SystemClock)
 
@@ -181,6 +183,8 @@ def build_container(config: Config | None = None) -> Container:
     # downloader behaves exactly as it did before S07.
     downloader = YtdlpDownloader(cookies_file=resolved_config.cookies_file)
     stats_probe: StatsProbe = YtdlpStatsProbe(cookies_file=resolved_config.cookies_file)
+    # StatsStage is standalone — NOT added to pipeline_runner.stages (anti-pitfall M009)
+    stats_stage = StatsStage(stats_probe=stats_probe)
 
     # FasterWhisperTranscriber loads the model lazily on the first
     # transcribe call (S03/D026), so this constructor never triggers
@@ -242,6 +246,7 @@ def build_container(config: Config | None = None) -> Container:
         frame_extractor=frame_extractor,
         analyzer=analyzer,
         stats_probe=stats_probe,
+        stats_stage=stats_stage,
         pipeline_runner=pipeline_runner,
         clock=clock,
     )
