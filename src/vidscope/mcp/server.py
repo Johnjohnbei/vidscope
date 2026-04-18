@@ -46,6 +46,7 @@ from vidscope.application import (
     GetCreatorUseCase,
     GetStatusUseCase,
     IngestVideoUseCase,
+    ListLinksUseCase,
     ListVideosUseCase,
     SearchLibraryUseCase,
     ShowVideoUseCase,
@@ -338,6 +339,52 @@ def build_mcp_server(container: Container) -> FastMCP:
         return {
             "found": True,
             "creator": _creator_to_dict(result.creator),
+        }
+
+    @mcp.tool()
+    def vidscope_list_links(
+        video_id: int, source: str | None = None
+    ) -> dict[str, Any]:
+        """List URLs extracted from a video's description + transcript.
+
+        Returns every :class:`Link` persisted by the
+        :class:`MetadataExtractStage` (M007/S03). ``source`` optionally
+        filters by origin: ``"description"`` for caption-sourced URLs,
+        ``"transcript"`` for transcript-sourced, ``"ocr"`` reserved
+        for M008. Omit ``source`` to get every URL.
+
+        Returns ``{"found": False, "video_id": video_id, "links": []}``
+        when no video matches the id — never raises on a miss.
+        """
+        try:
+            use_case = ListLinksUseCase(
+                unit_of_work_factory=container.unit_of_work
+            )
+            result = use_case.execute(video_id, source=source)
+        except DomainError as exc:
+            raise ValueError(str(exc)) from exc
+
+        if not result.found:
+            return {
+                "found": False,
+                "video_id": video_id,
+                "links": [],
+            }
+
+        return {
+            "found": True,
+            "video_id": result.video_id,
+            "source_filter": source,
+            "links": [
+                {
+                    "id": link.id,
+                    "url": link.url,
+                    "normalized_url": link.normalized_url,
+                    "source": link.source,
+                    "position_ms": link.position_ms,
+                }
+                for link in result.links
+            ],
         }
 
     # The closures above reference the use cases by name so mypy can

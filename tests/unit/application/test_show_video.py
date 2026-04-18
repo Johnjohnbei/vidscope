@@ -9,24 +9,20 @@ from __future__ import annotations
 from types import TracebackType
 from typing import Any
 
-import pytest
-
 from vidscope.application.show_video import ShowVideoResult, ShowVideoUseCase
 from vidscope.domain import (
     Analysis,
     Creator,
     Frame,
     Hashtag,
-    Language,
     Link,
     Mention,
     Platform,
     Transcript,
-    TranscriptSegment,
     Video,
     VideoId,
 )
-from vidscope.domain.values import CreatorId, PlatformId, PlatformUserId
+from vidscope.domain.values import CreatorId, PlatformId
 
 # ---------------------------------------------------------------------------
 # Fakes
