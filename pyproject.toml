@@ -33,6 +33,12 @@ dependencies = [
     "yt-dlp>=2026.3",
 ]
 
+[project.optional-dependencies]
+vision = [
+    "rapidocr-onnxruntime>=1.4.4,<2",
+    "opencv-python-headless>=4.8,<5",
+]
+
 [project.scripts]
 vidscope = "vidscope.cli.app:app"
 
@@ -47,6 +53,18 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/vidscope"]
+
+# ---------------------------------------------------------------------------
+# uv
+# ---------------------------------------------------------------------------
+[tool.uv]
+# rapidocr-onnxruntime declares opencv-python as a hard dep, but
+# vidscope prefers opencv-python-headless (no Qt, smaller, server-
+# friendly). Force uv to treat opencv-python-headless as the
+# provider of the cv2 namespace. See M008 RESEARCH §1.1.
+override-dependencies = [
+    "opencv-python-headless>=4.8,<5",
+]
 
 # ---------------------------------------------------------------------------
 # pytest
