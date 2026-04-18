@@ -33,6 +33,7 @@ from vidscope.domain import (
     Creator,
     CreatorId,
     Frame,
+    FrameText,
     Hashtag,
     Link,
     Mention,
@@ -53,6 +54,7 @@ __all__ = [
     "AnalysisRepository",
     "CreatorRepository",
     "FrameRepository",
+    "FrameTextRepository",
     "HashtagRepository",
     "LinkRepository",
     "MentionRepository",
@@ -518,5 +520,58 @@ class LinkRepository(Protocol):
 
         Used by the search facet ``--has-link`` via EXISTS subquery
         (M007/S04).
+        """
+        ...
+
+
+@runtime_checkable
+class FrameTextRepository(Protocol):
+    """Persistence for :class:`~vidscope.domain.entities.FrameText`.
+
+    Side table keyed by ``(frame_id, id)`` with FK cascade on
+    ``frames.id`` AND ``videos.id`` (denormalised). The repository
+    owns the FTS5 sync: every insert into ``frame_texts`` also
+    inserts into ``frame_texts_fts``, every delete cascades
+    through both. Pattern mirrors :class:`SearchIndex`.
+    """
+
+    def add_many_for_frame(
+        self,
+        frame_id: int,
+        video_id: VideoId,
+        texts: list[FrameText],
+    ) -> list[FrameText]:
+        """Insert every text row for ``frame_id`` atomically.
+
+        Empty ``texts`` is a no-op. Returns the persisted entities
+        with ``id`` populated. The adapter MUST also sync each
+        inserted row into ``frame_texts_fts``.
+        """
+        ...
+
+    def list_for_video(self, video_id: VideoId) -> list[FrameText]:
+        """Return every frame text for ``video_id`` ordered by
+        ``frame_id`` asc then ``id`` asc. Empty list on miss —
+        never raises.
+        """
+        ...
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        """Return ``True`` when at least one frame text exists for
+        ``video_id``. Used by
+        :meth:`VisualIntelligenceStage.is_satisfied`.
+        """
+        ...
+
+    def find_video_ids_by_text(
+        self, query: str, *, limit: int = 50
+    ) -> list[VideoId]:
+        """Return up to ``limit`` distinct video ids whose
+        on-screen text matches ``query`` via FTS5 MATCH on
+        ``frame_texts_fts``.
+
+        ``query`` is passed through to FTS5 as-is (callers MUST
+        ensure it is a valid FTS5 query string — a bare word is
+        always valid). Empty list on miss — never raises.
         """
         ...

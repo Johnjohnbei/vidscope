@@ -52,6 +52,7 @@ from vidscope.ports import (
     AnalysisRepository,
     CreatorRepository,
     FrameRepository,
+    FrameTextRepository,
     HashtagRepository,
     LinkRepository,
     MentionRepository,
@@ -88,6 +89,7 @@ class SqliteUnitOfWork:
         self.creators: CreatorRepository
         self.transcripts: TranscriptRepository
         self.frames: FrameRepository
+        self.frame_texts: FrameTextRepository
         self.analyses: AnalysisRepository
         self.hashtags: HashtagRepository
         self.mentions: MentionRepository

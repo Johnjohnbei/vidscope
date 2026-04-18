@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from vidscope.ports.clock import Clock
 from vidscope.ports.link_extractor import LinkExtractor, RawLink
+from vidscope.ports.ocr_engine import FaceCounter, OcrEngine, OcrLine
 from vidscope.ports.pipeline import (
     Analyzer,
     ChannelEntry,
@@ -37,6 +38,7 @@ from vidscope.ports.repositories import (
     AnalysisRepository,
     CreatorRepository,
     FrameRepository,
+    FrameTextRepository,
     HashtagRepository,
     LinkRepository,
     MentionRepository,
@@ -57,14 +59,18 @@ __all__ = [
     "CreatorInfo",
     "CreatorRepository",
     "Downloader",
+    "FaceCounter",
     "FrameExtractor",
     "FrameRepository",
+    "FrameTextRepository",
     "HashtagRepository",
     "IngestOutcome",
     "LinkExtractor",
     "LinkRepository",
     "MediaStorage",
     "MentionRepository",
+    "OcrEngine",
+    "OcrLine",
     "PipelineContext",
     "PipelineRunRepository",
     "ProbeResult",
