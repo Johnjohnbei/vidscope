@@ -33,6 +33,7 @@ import logging
 from pathlib import Path
 
 from vidscope.domain import (
+    ContentShape,
     FrameText,
     IndexingError,
     Link,
@@ -45,11 +46,39 @@ from vidscope.ports import (
     StageResult,
     UnitOfWork,
 )
-from vidscope.ports.ocr_engine import OcrEngine
+from vidscope.ports.ocr_engine import FaceCounter, OcrEngine
 
 _logger = logging.getLogger(__name__)
 
-__all__ = ["VisualIntelligenceStage"]
+__all__ = ["VisualIntelligenceStage", "classify_content_shape"]
+
+_TALKING_HEAD_THRESHOLD: float = 0.4
+
+
+def classify_content_shape(face_counts: list[int]) -> ContentShape:
+    """Classify a video's visual form from a list of per-frame face counts.
+
+    Rules (per M008 RESEARCH §2.4):
+
+    - Empty list → :attr:`ContentShape.UNKNOWN` (no frames were
+      processed, or OpenCV is not installed)
+    - Every count is 0 → :attr:`ContentShape.BROLL`
+    - ≥ 40% of frames have at least one face →
+      :attr:`ContentShape.TALKING_HEAD`
+    - Otherwise → :attr:`ContentShape.MIXED`
+
+    A frame with 3 faces counts as a single "has-face" frame — we
+    only measure presence, not intensity.
+    """
+    if not face_counts:
+        return ContentShape.UNKNOWN
+    frames_with_face = sum(1 for c in face_counts if c > 0)
+    if frames_with_face == 0:
+        return ContentShape.BROLL
+    ratio = frames_with_face / len(face_counts)
+    if ratio >= _TALKING_HEAD_THRESHOLD:
+        return ContentShape.TALKING_HEAD
+    return ContentShape.MIXED
 
 
 class VisualIntelligenceStage:

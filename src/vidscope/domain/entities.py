@@ -84,6 +84,8 @@ class Video:
     description: str | None = None
     music_track: str | None = None
     music_artist: str | None = None
+    thumbnail_key: str | None = None
+    content_shape: str | None = None
 
     def is_ingested(self) -> bool:
         """Return ``True`` once the ingest stage has stored a media file."""

@@ -265,3 +265,70 @@ class TestVideoM007MetadataFields:
             assert found.description is None
             assert found.music_track is None
             assert found.music_artist is None
+
+
+class TestUpdateVisualMetadata:
+    """M008/S03: VideoRepository.update_visual_metadata persists R048+R049 columns."""
+
+    def test_update_sets_thumbnail_key_and_content_shape(
+        self, engine: Engine
+    ) -> None:
+        with SqliteUnitOfWork(engine) as uow:
+            stored = uow.videos.add(
+                _sample_video(platform_id=PlatformId("vis_v1"))
+            )
+            assert stored.id is not None
+            vid_id = stored.id
+
+        with SqliteUnitOfWork(engine) as uow:
+            uow.videos.update_visual_metadata(
+                vid_id,
+                thumbnail_key="videos/yt/abc/thumb.jpg",
+                content_shape="talking_head",
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get(vid_id)
+            assert found is not None
+            assert found.thumbnail_key == "videos/yt/abc/thumb.jpg"
+            assert found.content_shape == "talking_head"
+
+    def test_update_preserves_other_columns(self, engine: Engine) -> None:
+        with SqliteUnitOfWork(engine) as uow:
+            stored = uow.videos.add(
+                _sample_video(
+                    platform_id=PlatformId("vis_v2"),
+                    title="Preserved Title",
+                    description="Preserved desc",
+                    music_track="Preserved track",
+                )
+            )
+            assert stored.id is not None
+            vid_id = stored.id
+
+        with SqliteUnitOfWork(engine) as uow:
+            uow.videos.update_visual_metadata(
+                vid_id,
+                thumbnail_key="videos/yt/vis_v2/thumb.jpg",
+                content_shape="broll",
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get(vid_id)
+            assert found is not None
+            assert found.title == "Preserved Title"
+            assert found.description == "Preserved desc"
+            assert found.music_track == "Preserved track"
+            assert found.thumbnail_key == "videos/yt/vis_v2/thumb.jpg"
+            assert found.content_shape == "broll"
+
+    def test_update_on_missing_video_raises_storage_error(
+        self, engine: Engine
+    ) -> None:
+        with SqliteUnitOfWork(engine) as uow, pytest.raises(StorageError) as exc_info:
+            uow.videos.update_visual_metadata(
+                VideoId(99999),
+                thumbnail_key="videos/yt/missing/thumb.jpg",
+                content_shape="unknown",
+            )
+        assert "99999" in str(exc_info.value) or "not found" in str(exc_info.value)

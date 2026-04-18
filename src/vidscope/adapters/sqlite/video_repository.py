@@ -165,6 +165,40 @@ class VideoRepositorySQLite:
         ).scalar()
         return int(total or 0)
 
+    def update_visual_metadata(
+        self,
+        video_id: VideoId,
+        *,
+        thumbnail_key: str | None,
+        content_shape: str | None,
+    ) -> None:
+        """Update ``videos.thumbnail_key`` and ``videos.content_shape``
+        for ``video_id`` in a single targeted UPDATE.
+
+        Raises
+        ------
+        StorageError
+            When no video row matches ``video_id``.
+        """
+        try:
+            result = self._conn.execute(
+                videos_table.update()
+                .where(videos_table.c.id == int(video_id))
+                .values(
+                    thumbnail_key=thumbnail_key,
+                    content_shape=content_shape,
+                )
+            )
+        except SQLAlchemyError as exc:
+            raise StorageError(
+                f"update_visual_metadata failed for video {int(video_id)}: {exc}",
+                cause=exc,
+            ) from exc
+        if result.rowcount == 0:
+            raise StorageError(
+                f"update_visual_metadata: video {int(video_id)} not found"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Row <-> entity translation
@@ -215,6 +249,8 @@ def _row_to_video(row: Any) -> Video:
         description=data.get("description"),
         music_track=data.get("music_track"),
         music_artist=data.get("music_artist"),
+        thumbnail_key=data.get("thumbnail_key"),
+        content_shape=data.get("content_shape"),
     )
 
 

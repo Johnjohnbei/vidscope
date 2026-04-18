@@ -523,3 +523,35 @@ class TestFrameText:
         assert ft.confidence == 1.5
         ft2 = FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=-0.1)
         assert ft2.confidence == -0.1
+
+
+class TestVideoVisualMetadata:
+    """M008/S03: thumbnail_key + content_shape fields on Video (R048, R049)."""
+
+    def _minimal(self) -> Video:
+        return Video(
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId("x"),
+            url="u",
+        )
+
+    def test_defaults_none(self) -> None:
+        v = self._minimal()
+        assert v.thumbnail_key is None
+        assert v.content_shape is None
+
+    def test_round_trip(self) -> None:
+        v = Video(
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId("x"),
+            url="u",
+            thumbnail_key="videos/youtube/x/thumb.jpg",
+            content_shape="talking_head",
+        )
+        assert v.thumbnail_key == "videos/youtube/x/thumb.jpg"
+        assert v.content_shape == "talking_head"
+
+    def test_is_frozen(self) -> None:
+        v = self._minimal()
+        with pytest.raises(FrozenInstanceError):
+            v.thumbnail_key = "x"  # type: ignore[misc]

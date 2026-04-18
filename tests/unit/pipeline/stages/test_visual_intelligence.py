@@ -201,6 +201,56 @@ def _stage(
 # ---------------------------------------------------------------------------
 
 
+class TestClassifyContentShape:
+    """Tests for the classify_content_shape helper (M008/R049)."""
+
+    def test_empty_list_returns_unknown(self) -> None:
+        from vidscope.domain import ContentShape
+        from vidscope.pipeline.stages.visual_intelligence import classify_content_shape
+
+        assert classify_content_shape([]) == ContentShape.UNKNOWN
+
+    def test_all_zeros_returns_broll(self) -> None:
+        from vidscope.domain import ContentShape
+        from vidscope.pipeline.stages.visual_intelligence import classify_content_shape
+
+        assert classify_content_shape([0, 0, 0]) == ContentShape.BROLL
+
+    def test_sixty_percent_faces_returns_talking_head(self) -> None:
+        from vidscope.domain import ContentShape
+        from vidscope.pipeline.stages.visual_intelligence import classify_content_shape
+
+        # 3/5 = 60% ≥ 40%
+        assert classify_content_shape([1, 0, 1, 0, 1]) == ContentShape.TALKING_HEAD
+
+    def test_exactly_forty_percent_returns_talking_head(self) -> None:
+        from vidscope.domain import ContentShape
+        from vidscope.pipeline.stages.visual_intelligence import classify_content_shape
+
+        # 2/5 = 40%
+        assert classify_content_shape([1, 0, 1, 0, 0]) == ContentShape.TALKING_HEAD
+
+    def test_twenty_percent_returns_mixed(self) -> None:
+        from vidscope.domain import ContentShape
+        from vidscope.pipeline.stages.visual_intelligence import classify_content_shape
+
+        # 1/5 = 20% < 40%
+        assert classify_content_shape([1, 0, 0, 0, 0]) == ContentShape.MIXED
+
+    def test_single_frame_with_face_returns_talking_head(self) -> None:
+        from vidscope.domain import ContentShape
+        from vidscope.pipeline.stages.visual_intelligence import classify_content_shape
+
+        assert classify_content_shape([1]) == ContentShape.TALKING_HEAD
+
+    def test_multiface_frames_count_as_one(self) -> None:
+        from vidscope.domain import ContentShape
+        from vidscope.pipeline.stages.visual_intelligence import classify_content_shape
+
+        # 2 frames with ≥1 face out of 5 = 40% → TALKING_HEAD
+        assert classify_content_shape([3, 0, 2, 0, 0]) == ContentShape.TALKING_HEAD
+
+
 class TestIsSatisfied:
     def test_returns_false_when_video_id_missing(self) -> None:
         stage, uow = _stage()

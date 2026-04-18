@@ -141,6 +141,24 @@ class VideoRepository(Protocol):
         """Return the total number of videos in the store."""
         ...
 
+    def update_visual_metadata(
+        self,
+        video_id: VideoId,
+        *,
+        thumbnail_key: str | None,
+        content_shape: str | None,
+    ) -> None:
+        """Update ``videos.thumbnail_key`` and ``videos.content_shape``
+        for ``video_id`` in one UPDATE. Other columns are preserved
+        (no wide row-rewrite).
+
+        Raises
+        ------
+        StorageError
+            When no video row matches ``video_id``.
+        """
+        ...
+
 
 @runtime_checkable
 class TranscriptRepository(Protocol):
