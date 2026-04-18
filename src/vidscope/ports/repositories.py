@@ -37,10 +37,12 @@ from vidscope.domain import (
     PlatformId,
     RunStatus,
     StageName,
+    TrackingStatus,
     Transcript,
     Video,
     VideoId,
     VideoStats,
+    VideoTracking,
     WatchedAccount,
     WatchRefresh,
 )
@@ -52,6 +54,7 @@ __all__ = [
     "TranscriptRepository",
     "VideoRepository",
     "VideoStatsRepository",
+    "VideoTrackingRepository",
     "WatchAccountRepository",
     "WatchRefreshRepository",
 ]
@@ -389,5 +392,50 @@ class VideoStatsRepository(Protocol):
             Video ids ordered by approximate view delta descending (largest
             growth first). May be smaller than ``limit`` when fewer videos
             qualify.
+        """
+        ...
+
+
+@runtime_checkable
+class VideoTrackingRepository(Protocol):
+    """Persistence for :class:`VideoTracking` rows (M011/R056).
+
+    One row per video — UNIQUE on ``video_id``. ``upsert`` is the only
+    write method: creating and updating share the same signature, so
+    callers don't need to decide between INSERT/UPDATE (D1 M011 RESEARCH).
+    """
+
+    def upsert(self, tracking: VideoTracking) -> VideoTracking:
+        """Insert or update the tracking row for ``tracking.video_id``.
+
+        Uses ``ON CONFLICT(video_id) DO UPDATE`` so a second call for the
+        same ``video_id`` atomically replaces ``status``, ``starred``,
+        ``notes``, and ``updated_at``. Returns the persisted entity with
+        ``id``, ``created_at``, ``updated_at`` populated.
+        """
+        ...
+
+    def get_for_video(self, video_id: VideoId) -> VideoTracking | None:
+        """Return the tracking row for ``video_id`` or ``None`` if absent.
+
+        Sparse table semantics: absence means "no user workflow yet",
+        not "implicit new status".
+        """
+        ...
+
+    def list_by_status(
+        self, status: TrackingStatus, *, limit: int = 1000
+    ) -> list[VideoTracking]:
+        """Return every tracking row whose ``status`` equals ``status``.
+
+        Ordered by ``updated_at DESC`` (most recent first). Capped at
+        ``limit`` (default 1000) to avoid unbounded scans.
+        """
+        ...
+
+    def list_starred(self, *, limit: int = 1000) -> list[VideoTracking]:
+        """Return every tracking row with ``starred=True``.
+
+        Ordered by ``updated_at DESC``. Capped at ``limit`` (default 1000).
         """
         ...

@@ -38,6 +38,7 @@ from vidscope.ports.repositories import (
     TranscriptRepository,
     VideoRepository,
     VideoStatsRepository,
+    VideoTrackingRepository,
     WatchAccountRepository,
     WatchRefreshRepository,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "UnitOfWorkFactory",
     "VideoRepository",
     "VideoStatsRepository",
+    "VideoTrackingRepository",
     "WatchAccountRepository",
     "WatchRefreshRepository",
 ]

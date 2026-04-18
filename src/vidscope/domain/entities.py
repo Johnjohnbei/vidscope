@@ -29,6 +29,7 @@ from vidscope.domain.values import (
     RunStatus,
     SentimentLabel,
     StageName,
+    TrackingStatus,
     VideoId,
 )
 
@@ -40,6 +41,7 @@ __all__ = [
     "TranscriptSegment",
     "Video",
     "VideoStats",
+    "VideoTracking",
     "WatchRefresh",
     "WatchedAccount",
 ]
@@ -253,3 +255,35 @@ class VideoStats:
     save_count: int | None = None
     id: int | None = None
     created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class VideoTracking:
+    """User workflow overlay for a single video (M011/R056).
+
+    One row per video — UNIQUE on ``video_id``. The table is independent
+    of ``videos`` (D033 immutable videos). Re-ingesting a video leaves
+    the ``video_tracking`` row untouched — that's the pipeline neutrality
+    invariant.
+
+    Fields
+    ------
+    video_id:
+        FK to ``videos.id`` with ON DELETE CASCADE.
+    status:
+        Current workflow label. Typical flow: new -> reviewed ->
+        saved|actioned|ignored -> archived. Any transition is legal.
+    starred:
+        Independent of ``status`` — user may star any row.
+    notes:
+        Free-text note. ``None`` means "no note set" (distinct from
+        ``""`` which means "note was explicitly cleared").
+    """
+
+    video_id: VideoId
+    status: TrackingStatus
+    starred: bool = False
+    notes: str | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None

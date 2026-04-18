@@ -31,6 +31,7 @@ __all__ = [
     "RunStatus",
     "SentimentLabel",
     "StageName",
+    "TrackingStatus",
     "VideoId",
 ]
 
@@ -73,6 +74,26 @@ class SentimentLabel(StrEnum):
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
     MIXED = "mixed"
+
+
+class TrackingStatus(StrEnum):
+    """User-assigned workflow status for a single video (M011/R056).
+
+    Stored in the ``video_tracking`` table (separate from the immutable
+    ``videos`` table per D033). Typical user flow:
+
+        new -> reviewed -> saved|actioned|ignored -> archived
+
+    No state machine is enforced — any transition is legal (D2 of M011
+    RESEARCH, R032 single-user tool). The status is a label, not a gate.
+    """
+
+    NEW = "new"
+    REVIEWED = "reviewed"
+    SAVED = "saved"
+    ACTIONED = "actioned"
+    IGNORED = "ignored"
+    ARCHIVED = "archived"
 
 
 class Platform(StrEnum):

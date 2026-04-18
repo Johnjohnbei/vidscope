@@ -35,6 +35,7 @@ from vidscope.ports.repositories import (
     TranscriptRepository,
     VideoRepository,
     VideoStatsRepository,
+    VideoTrackingRepository,
     WatchAccountRepository,
     WatchRefreshRepository,
 )
@@ -67,6 +68,7 @@ class UnitOfWork(Protocol):
     watch_accounts: WatchAccountRepository
     watch_refreshes: WatchRefreshRepository
     video_stats: VideoStatsRepository
+    video_tracking: VideoTrackingRepository
 
     def __enter__(self) -> UnitOfWork:
         ...

@@ -18,6 +18,7 @@ from vidscope.domain.entities import (
     TranscriptSegment,
     Video,
     VideoStats,
+    VideoTracking,
     WatchedAccount,
     WatchRefresh,
 )
@@ -42,6 +43,7 @@ from vidscope.domain.values import (
     RunStatus,
     SentimentLabel,
     StageName,
+    TrackingStatus,
     VideoId,
 )
 
@@ -54,6 +56,7 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "TranscriptSegment",
     "Video",
     "VideoStats",
+    "VideoTracking",
     "WatchedAccount",
     "WatchRefresh",
     # errors
@@ -75,6 +78,7 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "RunStatus",
     "SentimentLabel",
     "StageName",
+    "TrackingStatus",
     "VideoId",
     # helpers
     "detect_platform",
