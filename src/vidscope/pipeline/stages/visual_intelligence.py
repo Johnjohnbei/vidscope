@@ -116,14 +116,20 @@ class VisualIntelligenceStage:
     # ------------------------------------------------------------------
 
     def is_satisfied(self, ctx: PipelineContext, uow: UnitOfWork) -> bool:
-        """Return True when the stage's full output is in place:
-        (a) at least one :class:`FrameText` row for the video,
-        (b) ``videos.thumbnail_key`` is populated,
-        (c) ``videos.content_shape`` is populated.
+        """Return True only when ALL three outputs are present:
+        (a) at least one :class:`FrameText` row (OCR ran),
+        (b) ``videos.thumbnail_key`` is set (thumbnail was copied),
+        (c) ``videos.content_shape`` is set (face-count ran).
 
-        Any missing piece forces re-execution. This guarantees a
-        half-completed run (e.g. OCR succeeded but process died
-        before face-count) eventually finishes on the next invocation.
+        All three are written atomically in a single ``execute()``
+        transaction, so a partial state (any condition False) means
+        ``execute()`` never completed successfully and a re-run is needed.
+
+        Do NOT weaken this check — (a) alone is insufficient. A video
+        where OCR succeeded but face-count/thumbnail were not yet written
+        (e.g. from a test fixture or migration that pre-populates
+        ``frame_texts`` without running the full stage) would be
+        permanently skipped if only (a) were required.
         """
         if ctx.video_id is None:
             return False
