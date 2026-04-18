@@ -42,6 +42,8 @@ _POSITIVE_EN: Final[frozenset[str]] = frozenset({
     "enjoy", "enjoyed", "enjoying", "recommend", "recommended", "fabulous",
     "terrific", "stellar", "impressive", "favorite", "favourite", "stunning",
     "good", "nice", "cool", "fun",
+    # Comedy / humour positive signals
+    "funny", "hilarious", "lol", "haha", "amusing", "entertaining", "gold",
 })
 
 # French positive vocabulary
@@ -51,6 +53,8 @@ _POSITIVE_FR: Final[frozenset[str]] = frozenset({
     "merveilleux", "merveilleuse", "recommande", "content", "contente",
     "heureux", "heureuse", "ravi", "ravie", "kiffe", "kiffer",
     "utile", "incroyable", "top", "bien", "bravo", "magique",
+    # Comedy / humour positive signals
+    "drôle", "hilarant", "hilarante", "amusant", "amusante",
 })
 
 # English negative vocabulary
