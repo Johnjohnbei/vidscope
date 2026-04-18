@@ -92,6 +92,26 @@ class FakeLinkRepo:
         return False
 
 
+class FakeFrameTextRepo:
+    def __init__(self, video_ids_by_query: dict[str, list[int]] | None = None) -> None:
+        # mapping: query_string -> list of video_ids
+        self._mapping: dict[str, list[int]] = video_ids_by_query or {}
+
+    def find_video_ids_by_text(
+        self, query: str, *, limit: int = 50
+    ) -> list[VideoId]:
+        return [VideoId(v) for v in self._mapping.get(query, [])[:limit]]
+
+    def add_many_for_frame(self, frame_id: int, video_id: VideoId, texts: list) -> list:
+        return []
+
+    def list_for_video(self, video_id: VideoId) -> list:
+        return []
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        return False
+
+
 def _make_video(
     vid: int, title: str = "Test video", music_track: str | None = None
 ) -> Video:
@@ -142,12 +162,14 @@ class FakeUoW:
         mentions: FakeMentionRepo | None = None,
         links: FakeLinkRepo | None = None,
         videos: FakeVideoRepo | None = None,
+        frame_texts: FakeFrameTextRepo | None = None,
     ) -> None:
         self.search_index = search_index or FakeSearchIndex()
         self.hashtags = hashtags or FakeHashtagRepo()
         self.mentions = mentions or FakeMentionRepo()
         self.links = links or FakeLinkRepo()
         self.videos = videos or FakeVideoRepo()
+        self.frame_texts = frame_texts or FakeFrameTextRepo()
 
     def __enter__(self) -> FakeUoW:
         return self
@@ -449,3 +471,82 @@ def test_result_is_frozen_dataclass() -> None:
     result = SearchLibraryResult(query="x", hits=())
     with pytest.raises((dataclasses.FrozenInstanceError, TypeError, AttributeError)):
         result.query = "y"  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# M008 — on_screen_text facet
+# ---------------------------------------------------------------------------
+
+
+class TestOnScreenTextFacet:
+    def test_on_screen_text_none_does_not_change_behaviour(self) -> None:
+        """on_screen_text=None (default) → comportement inchangé par rapport à M007."""
+        hits = [_make_hit(1), _make_hit(2)]
+        factory = _make_uow_factory(search_index=FakeSearchIndex(hits))
+        uc = SearchLibraryUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute("cooking", on_screen_text=None)
+
+        assert len(result.hits) == 2
+
+    def test_on_screen_text_only_returns_matched_video_ids(self) -> None:
+        """on_screen_text='promo' sans query → synthèse pour les video_ids matchant."""
+        frame_texts = FakeFrameTextRepo({"promo": [1, 2]})
+        videos = FakeVideoRepo([_make_video(1, "Video 1"), _make_video(2, "Video 2")])
+        factory = _make_uow_factory(frame_texts=frame_texts, videos=videos)
+        uc = SearchLibraryUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute("", on_screen_text="promo")
+
+        assert {int(h.video_id) for h in result.hits} == {1, 2}
+        # Synthèse SearchResult → source="video"
+        assert all(h.source == "video" for h in result.hits)
+
+    def test_on_screen_text_empty_string_returns_no_hits(self) -> None:
+        """on_screen_text='   ' (whitespace) → aucun résultat."""
+        frame_texts = FakeFrameTextRepo({"promo": [1, 2]})
+        videos = FakeVideoRepo([_make_video(1), _make_video(2)])
+        factory = _make_uow_factory(frame_texts=frame_texts, videos=videos)
+        uc = SearchLibraryUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute("", on_screen_text="   ")
+
+        assert result.hits == ()
+
+    def test_on_screen_text_intersects_with_hashtag(self) -> None:
+        """on_screen_text ∩ hashtag → AND implicite."""
+        frame_texts = FakeFrameTextRepo({"promo": [1, 2, 3]})
+        hashtags = FakeHashtagRepo({"cooking": [2, 3, 4]})
+        videos = FakeVideoRepo([_make_video(2), _make_video(3)])
+        factory = _make_uow_factory(
+            frame_texts=frame_texts, hashtags=hashtags, videos=videos
+        )
+        uc = SearchLibraryUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute("", on_screen_text="promo", hashtag="cooking")
+
+        assert {int(h.video_id) for h in result.hits} == {2, 3}
+
+    def test_on_screen_text_with_fts_query_filters_hits(self) -> None:
+        """execute('tutorial', on_screen_text='promo') → FTS5 ∩ on_screen_text."""
+        fts_hits = [_make_hit(1), _make_hit(2), _make_hit(3)]
+        frame_texts = FakeFrameTextRepo({"promo": [2, 3]})
+        factory = _make_uow_factory(
+            search_index=FakeSearchIndex(fts_hits),
+            frame_texts=frame_texts,
+        )
+        uc = SearchLibraryUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute("tutorial", on_screen_text="promo")
+
+        assert {int(h.video_id) for h in result.hits} == {2, 3}
+
+    def test_on_screen_text_no_match_returns_empty(self) -> None:
+        """on_screen_text sans correspondance → liste vide."""
+        frame_texts = FakeFrameTextRepo({})  # query "promo" → []
+        factory = _make_uow_factory(frame_texts=frame_texts)
+        uc = SearchLibraryUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute("anything", on_screen_text="promo")
+
+        assert result.hits == ()

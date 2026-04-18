@@ -55,6 +55,7 @@ class SearchLibraryUseCase:
         mention: str | None = None,
         has_link: bool = False,
         music_track: str | None = None,
+        on_screen_text: str | None = None,
     ) -> SearchLibraryResult:
         """Search transcripts + analyses + facets. Returns up to
         ``limit`` matches ranked by BM25 (or facet order when query is
@@ -66,6 +67,7 @@ class SearchLibraryUseCase:
             or mention is not None
             or has_link
             or music_track is not None
+            or on_screen_text is not None
         )
         query_text = query.strip() if query else ""
 
@@ -107,6 +109,17 @@ class SearchLibraryUseCase:
                         and v.music_track == music_track  # excludes NULL rows
                     }
                 )
+
+            if on_screen_text is not None:
+                stripped = on_screen_text.strip()
+                if stripped:
+                    ids = uow.frame_texts.find_video_ids_by_text(
+                        stripped, limit=1000
+                    )
+                    facet_sets.append({int(vid) for vid in ids})
+                else:
+                    # Empty/whitespace query → no match, break intersection
+                    facet_sets.append(set())
 
             # Intersection of all active facet sets. Empty list means
             # no facet was active — no restriction.

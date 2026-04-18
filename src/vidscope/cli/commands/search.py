@@ -45,6 +45,12 @@ def search_command(
         "--music-track",
         help="Filter videos whose music_track field matches exactly.",
     ),
+    on_screen_text: str | None = typer.Option(
+        None,
+        "--on-screen-text",
+        help="Filter videos whose OCR-extracted on-screen text matches "
+             "this FTS5 query (e.g. 'promo' or 'link bio').",
+    ),
 ) -> None:
     """Run a full-text query + optional facets through the library."""
     with handle_domain_errors():
@@ -59,6 +65,7 @@ def search_command(
             mention=mention,
             has_link=has_link,
             music_track=music_track,
+            on_screen_text=on_screen_text,
         )
 
         facets: list[str] = []
@@ -70,7 +77,9 @@ def search_command(
             facets.append("has-link")
         if music_track:
             facets.append(f"music={music_track}")
-        facet_str = (" [" + ", ".join(facets) + "]") if facets else ""
+        if on_screen_text:
+            facets.append(f"on-screen={on_screen_text}")
+        facet_str = (" \\[" + ", ".join(facets) + "]") if facets else ""
 
         console.print(
             f"[bold]query:[/bold] {result.query!r}{facet_str}   "

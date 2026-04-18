@@ -163,3 +163,67 @@ class TestSearchHelpOutput:
         assert result.exit_code == 0
         assert "--hashtag" in result.output
         assert "--has-link" in result.output
+
+
+# ---------------------------------------------------------------------------
+# M008 — --on-screen-text flag
+# ---------------------------------------------------------------------------
+
+
+class TestOnScreenTextFlag:
+    def _invoke_search_with_mock(
+        self, args: list[str], hits: list | None = None
+    ) -> tuple[object, object]:
+        from vidscope.application.search_library import SearchLibraryResult
+
+        mock_uc = MagicMock()
+        mock_uc.execute.return_value = SearchLibraryResult(
+            query="", hits=tuple(hits or [])
+        )
+        container = MagicMock()
+
+        with patch(_PATCH, return_value=container), patch(
+            "vidscope.cli.commands.search.SearchLibraryUseCase", return_value=mock_uc
+        ):
+            result = runner.invoke(app, args)
+
+        return result, mock_uc
+
+    def test_on_screen_text_flag_forwarded_to_execute(self) -> None:
+        """--on-screen-text promo → use case.execute(on_screen_text='promo')."""
+        result, mock_uc = self._invoke_search_with_mock(
+            ["search", "--on-screen-text", "promo", ""]
+        )
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        call_kwargs = mock_uc.execute.call_args
+        assert call_kwargs is not None
+        assert call_kwargs.kwargs.get("on_screen_text") == "promo"
+
+    def test_on_screen_text_facet_rendered_in_header(self) -> None:
+        """--on-screen-text promo → output contient 'on-screen=promo'."""
+        from vidscope.application.search_library import SearchLibraryResult
+        from vidscope.domain import VideoId
+        from vidscope.ports.pipeline import SearchResult
+
+        hit = SearchResult(
+            video_id=VideoId(1), source="video", snippet="Video 1", rank=1.0
+        )
+        mock_uc = MagicMock()
+        mock_uc.execute.return_value = SearchLibraryResult(
+            query="", hits=(hit,)
+        )
+        container = MagicMock()
+
+        with patch(_PATCH, return_value=container), patch(
+            "vidscope.cli.commands.search.SearchLibraryUseCase", return_value=mock_uc
+        ):
+            result = runner.invoke(app, ["search", "--on-screen-text", "promo", ""])
+
+        assert result.exit_code == 0  # type: ignore[union-attr]
+        assert "on-screen=promo" in result.output  # type: ignore[union-attr]
+
+    def test_on_screen_text_appears_in_help(self) -> None:
+        """vidscope search --help affiche --on-screen-text."""
+        result = runner.invoke(app, ["search", "--help"])
+        assert result.exit_code == 0
+        assert "--on-screen-text" in result.output
