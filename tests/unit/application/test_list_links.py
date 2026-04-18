@@ -6,14 +6,15 @@ LinkRepository. The use case returns ListLinksResult(video_id, found, links).
 
 from __future__ import annotations
 
+import dataclasses
 from types import TracebackType
 from typing import Any
 
 import pytest
 
+from vidscope.application.list_links import ListLinksResult, ListLinksUseCase
 from vidscope.domain import Link, Platform, Video, VideoId
 from vidscope.domain.values import PlatformId
-
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -27,12 +28,22 @@ class FakeVideoRepo:
     def get(self, video_id: VideoId) -> Video | None:
         return self._videos.get(int(video_id))
 
-    # stubs
-    def add(self, video: Video) -> Video: return video  # noqa: E704
-    def upsert_by_platform_id(self, video: Video) -> Video: return video  # noqa: E704
-    def get_by_platform_id(self, platform: Any, platform_id: Any) -> Video | None: return None  # noqa: E704
-    def list_recent(self, limit: int = 20) -> list[Video]: return []  # noqa: E704
-    def count(self) -> int: return 0  # noqa: E704
+    def add(self, video: Video) -> Video:
+        return video
+
+    def upsert_by_platform_id(self, video: Video) -> Video:
+        return video
+
+    def get_by_platform_id(
+        self, platform: Any, platform_id: Any
+    ) -> Video | None:
+        return None
+
+    def list_recent(self, limit: int = 20) -> list[Video]:
+        return []
+
+    def count(self) -> int:
+        return 0
 
 
 class FakeLinkRepo:
@@ -47,10 +58,16 @@ class FakeLinkRepo:
             return [lk for lk in all_links if lk.source == source]
         return list(all_links)
 
-    # stubs
-    def add_many_for_video(self, video_id: VideoId, links: list[Link]) -> list[Link]: return []  # noqa: E704
-    def has_any_for_video(self, video_id: VideoId) -> bool: return False  # noqa: E704
-    def find_video_ids_with_any_link(self, *, limit: int = 50) -> list[VideoId]: return []  # noqa: E704
+    def add_many_for_video(
+        self, video_id: VideoId, links: list[Link]
+    ) -> list[Link]:
+        return []
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        return False
+
+    def find_video_ids_with_any_link(self, *, limit: int = 50) -> list[VideoId]:
+        return []
 
 
 class FakeUoW:
@@ -118,16 +135,6 @@ def _make_link(
 
 
 # ---------------------------------------------------------------------------
-# Lazy import of use case (so tests fail gracefully if file doesn't exist yet)
-# ---------------------------------------------------------------------------
-
-
-def _get_use_case_classes() -> tuple[Any, Any]:
-    from vidscope.application.list_links import ListLinksResult, ListLinksUseCase
-    return ListLinksResult, ListLinksUseCase
-
-
-# ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
@@ -135,7 +142,6 @@ def _get_use_case_classes() -> tuple[Any, Any]:
 class TestListLinksUseCaseBasic:
     def test_returns_all_links_for_video(self) -> None:
         """execute(42) sans filtre retourne tous les Link du video."""
-        ListLinksResult, ListLinksUseCase = _get_use_case_classes()
         links = [
             _make_link(42, "https://a.com", link_id=1),
             _make_link(42, "https://b.com", source="transcript", link_id=2),
@@ -154,7 +160,6 @@ class TestListLinksUseCaseBasic:
 
     def test_filters_by_source_description(self) -> None:
         """execute(42, source='description') filtre par source."""
-        ListLinksResult, ListLinksUseCase = _get_use_case_classes()
         links = [
             _make_link(42, "https://a.com", source="description", link_id=1),
             _make_link(42, "https://b.com", source="transcript", link_id=2),
@@ -173,7 +178,6 @@ class TestListLinksUseCaseBasic:
 
     def test_filters_by_source_transcript(self) -> None:
         """execute(42, source='transcript') filtre par source."""
-        ListLinksResult, ListLinksUseCase = _get_use_case_classes()
         links = [
             _make_link(42, "https://a.com", source="description", link_id=1),
             _make_link(42, "https://b.com", source="transcript", link_id=2),
@@ -192,7 +196,6 @@ class TestListLinksUseCaseBasic:
 
     def test_video_not_found_returns_found_false(self) -> None:
         """execute(999) sur video inexistant → found=False, pas d'exception."""
-        ListLinksResult, ListLinksUseCase = _get_use_case_classes()
         factory = _make_uow_factory()  # empty repos
         uc = ListLinksUseCase(unit_of_work_factory=factory)
 
@@ -204,7 +207,6 @@ class TestListLinksUseCaseBasic:
 
     def test_video_exists_no_links_returns_found_true_empty_links(self) -> None:
         """execute(42) sur video existant sans link → found=True, links=()."""
-        ListLinksResult, ListLinksUseCase = _get_use_case_classes()
         factory = _make_uow_factory(
             videos={42: _make_video(42)},
             links_by_video={},  # no links for any video
@@ -218,7 +220,6 @@ class TestListLinksUseCaseBasic:
 
     def test_found_is_true_when_video_exists_even_without_links(self) -> None:
         """found dépend de l'existence de la vidéo, pas du nombre de liens."""
-        ListLinksResult, ListLinksUseCase = _get_use_case_classes()
         factory = _make_uow_factory(
             videos={7: _make_video(7)},
         )
@@ -233,9 +234,8 @@ class TestListLinksUseCaseBasic:
 
     def test_result_is_frozen_dataclass(self) -> None:
         """ListLinksResult est un frozen dataclass — immutabilité."""
-        import dataclasses
-        ListLinksResult, ListLinksUseCase = _get_use_case_classes()
-
         res = ListLinksResult(video_id=1, found=False)
-        with pytest.raises((dataclasses.FrozenInstanceError, TypeError, AttributeError)):
+        with pytest.raises(
+            (dataclasses.FrozenInstanceError, TypeError, AttributeError)
+        ):
             res.found = True  # type: ignore[misc]

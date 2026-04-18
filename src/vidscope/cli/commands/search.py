@@ -1,4 +1,4 @@
-"""`vidscope search <query>` — full-text search across transcripts and analyses."""
+"""`vidscope search <query>` — FTS5 + M007 facets."""
 
 from __future__ import annotations
 
@@ -12,7 +12,10 @@ __all__ = ["search_command"]
 
 
 def search_command(
-    query: str = typer.Argument(..., help="FTS5 query to run against the index."),
+    query: str = typer.Argument(
+        "",
+        help="FTS5 query to run against the index. Empty when using facets only.",
+    ),
     limit: int = typer.Option(
         20,
         "--limit",
@@ -21,24 +24,62 @@ def search_command(
         min=1,
         max=200,
     ),
+    hashtag: str | None = typer.Option(
+        None,
+        "--hashtag",
+        help="Filter videos carrying this hashtag (exact match after "
+             "canonicalisation, #Coding == coding).",
+    ),
+    mention: str | None = typer.Option(
+        None,
+        "--mention",
+        help="Filter videos mentioning this @handle (case-insensitive).",
+    ),
+    has_link: bool = typer.Option(
+        False,
+        "--has-link",
+        help="Only videos with at least one extracted URL.",
+    ),
+    music_track: str | None = typer.Option(
+        None,
+        "--music-track",
+        help="Filter videos whose music_track field matches exactly.",
+    ),
 ) -> None:
-    """Run a full-text query through the SQLite FTS5 index."""
+    """Run a full-text query + optional facets through the library."""
     with handle_domain_errors():
         container = acquire_container()
         use_case = SearchLibraryUseCase(
             unit_of_work_factory=container.unit_of_work
         )
-        result = use_case.execute(query, limit=limit)
+        result = use_case.execute(
+            query,
+            limit=limit,
+            hashtag=hashtag,
+            mention=mention,
+            has_link=has_link,
+            music_track=music_track,
+        )
+
+        facets: list[str] = []
+        if hashtag:
+            facets.append(f"#{hashtag.lstrip('#')}")
+        if mention:
+            facets.append(f"@{mention.lstrip('@')}")
+        if has_link:
+            facets.append("has-link")
+        if music_track:
+            facets.append(f"music={music_track}")
+        facet_str = (" [" + ", ".join(facets) + "]") if facets else ""
 
         console.print(
-            f"[bold]query:[/bold] {result.query!r}   "
+            f"[bold]query:[/bold] {result.query!r}{facet_str}   "
             f"[bold]hits:[/bold] {len(result.hits)}"
         )
 
         if not result.hits:
             console.print(
-                "[dim]No matches. The index is empty until "
-                "S06 wires the real pipeline.[/dim]"
+                "[dim]No matches. Try broader query or fewer facets.[/dim]"
             )
             return
 

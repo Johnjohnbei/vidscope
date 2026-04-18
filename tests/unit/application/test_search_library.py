@@ -16,7 +16,6 @@ from vidscope.domain import Hashtag, Link, Mention, Platform, Video, VideoId
 from vidscope.domain.values import PlatformId
 from vidscope.ports.pipeline import SearchResult
 
-
 # ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
@@ -33,9 +32,11 @@ class FakeSearchIndex:
         self.last_limit = limit
         return self._results[:limit]
 
-    # Protocol stubs not needed for tests
-    def index_transcript(self, transcript: Any) -> None: ...  # noqa: E704
-    def index_analysis(self, analysis: Any) -> None: ...  # noqa: E704
+    def index_transcript(self, transcript: Any) -> None:
+        pass
+
+    def index_analysis(self, analysis: Any) -> None:
+        pass
 
 
 class FakeHashtagRepo:
@@ -47,9 +48,11 @@ class FakeHashtagRepo:
         canonical = tag.lower().lstrip("#")
         return [VideoId(v) for v in self._mapping.get(canonical, [])[:limit]]
 
-    # Protocol stubs
-    def replace_for_video(self, video_id: VideoId, tags: list[str]) -> None: ...  # noqa: E704
-    def list_for_video(self, video_id: VideoId) -> list[Hashtag]: return []  # noqa: E704
+    def replace_for_video(self, video_id: VideoId, tags: list[str]) -> None:
+        pass
+
+    def list_for_video(self, video_id: VideoId) -> list[Hashtag]:
+        return []
 
 
 class FakeMentionRepo:
@@ -61,9 +64,11 @@ class FakeMentionRepo:
         canonical = handle.lower().lstrip("@")
         return [VideoId(v) for v in self._mapping.get(canonical, [])[:limit]]
 
-    # Protocol stubs
-    def replace_for_video(self, video_id: VideoId, mentions: list[Mention]) -> None: ...  # noqa: E704
-    def list_for_video(self, video_id: VideoId) -> list[Mention]: return []  # noqa: E704
+    def replace_for_video(self, video_id: VideoId, mentions: list[Mention]) -> None:
+        pass
+
+    def list_for_video(self, video_id: VideoId) -> list[Mention]:
+        return []
 
 
 class FakeLinkRepo:
@@ -73,13 +78,23 @@ class FakeLinkRepo:
     def find_video_ids_with_any_link(self, *, limit: int = 50) -> list[VideoId]:
         return [VideoId(v) for v in self._ids[:limit]]
 
-    # Protocol stubs
-    def add_many_for_video(self, video_id: VideoId, links: list[Link]) -> list[Link]: return []  # noqa: E704
-    def list_for_video(self, video_id: VideoId, *, source: str | None = None) -> list[Link]: return []  # noqa: E704
-    def has_any_for_video(self, video_id: VideoId) -> bool: return False  # noqa: E704
+    def add_many_for_video(
+        self, video_id: VideoId, links: list[Link]
+    ) -> list[Link]:
+        return []
+
+    def list_for_video(
+        self, video_id: VideoId, *, source: str | None = None
+    ) -> list[Link]:
+        return []
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        return False
 
 
-def _make_video(vid: int, title: str = "Test video", music_track: str | None = None) -> Video:
+def _make_video(
+    vid: int, title: str = "Test video", music_track: str | None = None
+) -> Video:
     return Video(
         platform=Platform.YOUTUBE,
         platform_id=PlatformId(f"yt{vid}"),
@@ -101,11 +116,19 @@ class FakeVideoRepo:
     def list_recent(self, limit: int = 20) -> list[Video]:
         return self._videos[:limit]
 
-    # Protocol stubs
-    def add(self, video: Video) -> Video: return video  # noqa: E704
-    def upsert_by_platform_id(self, video: Video) -> Video: return video  # noqa: E704
-    def get_by_platform_id(self, platform: Platform, platform_id: PlatformId) -> Video | None: return None  # noqa: E704
-    def count(self) -> int: return len(self._videos)  # noqa: E704
+    def add(self, video: Video) -> Video:
+        return video
+
+    def upsert_by_platform_id(self, video: Video) -> Video:
+        return video
+
+    def get_by_platform_id(
+        self, platform: Platform, platform_id: PlatformId
+    ) -> Video | None:
+        return None
+
+    def count(self) -> int:
+        return len(self._videos)
 
 
 class FakeUoW:
@@ -147,7 +170,9 @@ def _make_uow_factory(**kwargs: Any) -> Any:
     return _factory
 
 
-def _make_hit(video_id: int, source: str = "transcript", rank: float = 1.0) -> SearchResult:
+def _make_hit(
+    video_id: int, source: str = "transcript", rank: float = 1.0
+) -> SearchResult:
     return SearchResult(
         video_id=VideoId(video_id),
         source=source,
@@ -411,3 +436,16 @@ class TestEmptyFacet:
         result = uc.execute("")
 
         assert result.hits == ()
+
+
+# ---------------------------------------------------------------------------
+# Misc
+# ---------------------------------------------------------------------------
+
+def test_result_is_frozen_dataclass() -> None:
+    """SearchLibraryResult est un frozen dataclass — immutabilité."""
+    import dataclasses
+
+    result = SearchLibraryResult(query="x", hits=())
+    with pytest.raises((dataclasses.FrozenInstanceError, TypeError, AttributeError)):
+        result.query = "y"  # type: ignore[misc]

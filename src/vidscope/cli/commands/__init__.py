@@ -6,6 +6,7 @@ from vidscope.cli.commands.add import add_command
 from vidscope.cli.commands.cookies import cookies_app
 from vidscope.cli.commands.creators import creator_app
 from vidscope.cli.commands.doctor import doctor_command
+from vidscope.cli.commands.links import links_command
 from vidscope.cli.commands.list import list_command
 from vidscope.cli.commands.mcp import mcp_app
 from vidscope.cli.commands.search import search_command
@@ -19,6 +20,7 @@ __all__ = [
     "cookies_app",
     "creator_app",
     "doctor_command",
+    "links_command",
     "list_command",
     "mcp_app",
     "search_command",
