@@ -458,6 +458,18 @@ def _ensure_analysis_v2_columns(conn: Connection) -> None:
         row[1]
         for row in conn.execute(text("PRAGMA table_info(analyses)"))
     }
+    # T-SQL-M011-02: DDL does not support bound parameters, so we defend by
+    # (a) quoting the column identifier and (b) validating the type against an
+    # explicit allowlist.  Both values are currently compile-time constants;
+    # the guards ensure safety if the list is ever fed from external config.
+    _ALLOWED_DDL_TYPES = {
+        "JSON",
+        "FLOAT",
+        "BOOLEAN",
+        "TEXT",
+        "VARCHAR(32)",
+        "VARCHAR(64)",
+    }
     new_columns = [
         ("verticals", "JSON"),
         ("information_density", "FLOAT"),
@@ -472,7 +484,12 @@ def _ensure_analysis_v2_columns(conn: Connection) -> None:
     for col_name, col_type in new_columns:
         if col_name in existing_cols:
             continue
-        conn.execute(text(f"ALTER TABLE analyses ADD COLUMN {col_name} {col_type}"))
+        if col_type not in _ALLOWED_DDL_TYPES:
+            raise ValueError(f"DDL type non autorisé : {col_type!r}")
+        safe_col = col_name.replace('"', '""')  # SQL identifier escaping
+        conn.execute(
+            text(f'ALTER TABLE analyses ADD COLUMN "{safe_col}" {col_type}')
+        )
 
 
 def _ensure_video_tracking_table(conn: Connection) -> None:
