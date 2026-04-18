@@ -4,7 +4,7 @@
 
 VidScope is a personal video-intelligence tool. Given a URL to a public video on Instagram, TikTok, or YouTube, it downloads the media locally, transcribes the audio, extracts representative frames, produces a structured analysis of the content, and stores everything in a searchable local database. It exposes both a CLI (`vidscope add <url>`, `vidscope search <query>`) and — in later milestones — an MCP server so an AI agent can query and enrich the library during conversation.
 
-M001–M009 complete. M010 (scoring + taxonomy) and M011 (veille workflow) are scoped and ready.
+M001 (single-URL pipeline), M002 (MCP server + related-video suggestions), M003 (account monitoring + scheduled refresh), M004 (pluggable LLM analyzers), and M005 (cookies UX improvements) are complete. **All planned milestones are done.**
 
 ## Core Value
 
@@ -12,7 +12,7 @@ A single command turns a video URL into a searchable, analyzable record on the l
 
 ## Current State
 
-**M001–M009 complete.** The full single-video pipeline, MCP server, related-video suggestions, account watchlist, 5 pluggable LLM analyzer providers, polished cookies UX, creator-as-entity model, rich metadata (links/hashtags/mentions/music), visual intelligence (OCR/frames), and engagement velocity time-series are all alive.
+**All 5 planned milestones complete.** The full single-video pipeline, the MCP server, related-video suggestions, the account watchlist, 5 pluggable LLM analyzer providers, and the polished cookies UX are all alive.
 
 **Platform priority (D027):** Instagram is the primary target, then TikTok, then YouTube.
 
