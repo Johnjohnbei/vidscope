@@ -22,25 +22,25 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.engine.base import RootTransaction
 
 from vidscope.adapters.sqlite.analysis_repository import AnalysisRepositorySQLite
+from vidscope.adapters.sqlite.collection_repository import (
+    CollectionRepositorySQLite,
+)
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
 from vidscope.adapters.sqlite.pipeline_run_repository import (
     PipelineRunRepositorySQLite,
 )
 from vidscope.adapters.sqlite.search_index import SearchIndexSQLite
+from vidscope.adapters.sqlite.tag_repository import TagRepositorySQLite
 from vidscope.adapters.sqlite.transcript_repository import (
     TranscriptRepositorySQLite,
 )
 from vidscope.adapters.sqlite.video_repository import VideoRepositorySQLite
-from vidscope.adapters.sqlite.watch_account_repository import (
-    WatchAccountRepositorySQLite,
-)
 from vidscope.adapters.sqlite.video_stats_repository import VideoStatsRepositorySQLite
-from vidscope.adapters.sqlite.collection_repository import (
-    CollectionRepositorySQLite,
-)
-from vidscope.adapters.sqlite.tag_repository import TagRepositorySQLite
 from vidscope.adapters.sqlite.video_tracking_repository import (
     VideoTrackingRepositorySQLite,
+)
+from vidscope.adapters.sqlite.watch_account_repository import (
+    WatchAccountRepositorySQLite,
 )
 from vidscope.adapters.sqlite.watch_refresh_repository import (
     WatchRefreshRepositorySQLite,

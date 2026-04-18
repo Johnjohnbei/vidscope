@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 __all__ = ["engagement_rate", "views_velocity_24h"]
 
 
-def views_velocity_24h(history: list["VideoStats"]) -> float | None:
+def views_velocity_24h(history: list[VideoStats]) -> float | None:
     """Return the average views gained per hour over the last 24 h window.
 
     The function selects the earliest and latest snapshot within the
@@ -83,7 +83,7 @@ def views_velocity_24h(history: list["VideoStats"]) -> float | None:
     return delta_views / delta_hours
 
 
-def engagement_rate(stats: "VideoStats") -> float | None:
+def engagement_rate(stats: VideoStats) -> float | None:
     """Return the engagement rate for a single snapshot.
 
     Engagement rate = (likes + comments + reposts + saves) / views.

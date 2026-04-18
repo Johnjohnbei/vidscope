@@ -28,7 +28,7 @@ from typing import Final
 
 from vidscope.domain import SentimentLabel
 
-__all__ = ["POSITIVE_WORDS", "NEGATIVE_WORDS", "SentimentLexicon"]
+__all__ = ["NEGATIVE_WORDS", "POSITIVE_WORDS", "SentimentLexicon"]
 
 
 _TOKEN_PATTERN = re.compile(r"[^\W\d_]+", re.UNICODE)

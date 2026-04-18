@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from vidscope.domain import Analysis, Frame, Transcript, Video, VideoId, VideoStats
 from vidscope.domain.metrics import views_velocity_24h as _compute_velocity
 from vidscope.ports import UnitOfWorkFactory
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = ["ShowVideoResult", "ShowVideoUseCase"]
 

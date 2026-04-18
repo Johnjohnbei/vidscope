@@ -9,10 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
 from vidscope.application.search_library import SearchLibraryResult
-from vidscope.domain import ContentType, TrackingStatus, VideoId, VideoTracking, Tag, Collection
-
+from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
+from vidscope.domain import ContentType, TrackingStatus, VideoId, VideoTracking
 
 # ---- Fakes ----
 

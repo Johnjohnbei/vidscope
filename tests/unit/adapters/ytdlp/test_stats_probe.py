@@ -5,13 +5,9 @@ All tests mock yt_dlp.YoutubeDL so no network calls are made.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from vidscope.adapters.ytdlp.ytdlp_stats_probe import YtdlpStatsProbe, _int_or_none
-
 
 # ---------------------------------------------------------------------------
 # _int_or_none helper (T-DATA-01)

@@ -6,8 +6,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from vidscope.ports import FaceCounter, FrameTextRepository, OcrEngine, OcrLine
 from vidscope.domain import FrameText, VideoId
+from vidscope.ports import FaceCounter, FrameTextRepository, OcrEngine, OcrLine
 
 
 class TestOcrLine:

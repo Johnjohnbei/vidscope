@@ -5,6 +5,8 @@ import csv
 import io
 from pathlib import Path
 
+import pytest
+
 from vidscope.adapters.export.csv_exporter import CsvExporter
 from vidscope.application.export_library import ExportRecord
 
@@ -59,3 +61,7 @@ class TestCsvExporter:
         out = tmp_path / "empty.csv"
         CsvExporter().write([], out=out)
         assert out.read_text(encoding="utf-8") == ""
+
+    def test_empty_records_stdout_no_output(self, capsys: pytest.CaptureFixture[str]) -> None:
+        CsvExporter().write([])
+        assert capsys.readouterr().out == ""

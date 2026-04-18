@@ -9,7 +9,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from vidscope.application.refresh_stats import (
-    RefreshStatsBatchResult,
     RefreshStatsResult,
     RefreshStatsUseCase,
 )
@@ -298,7 +297,6 @@ def test_refresh_stats_watchlist_happy_path() -> None:
     """2 accounts x 3 videos each => videos_checked=6, stats_refreshed=6."""
     from vidscope.application.refresh_stats import (
         RefreshStatsForWatchlistUseCase,
-        RefreshStatsResult,
     )
 
     account = _make_watched_account(platform=Platform.YOUTUBE, handle="alice")
@@ -331,7 +329,6 @@ def test_refresh_stats_watchlist_per_video_error_isolation() -> None:
     """Error on one video => failed++, batch continues for next video."""
     from vidscope.application.refresh_stats import (
         RefreshStatsForWatchlistUseCase,
-        RefreshStatsResult,
     )
 
     account = _make_watched_account(platform=Platform.YOUTUBE, handle="alice")
@@ -369,7 +366,6 @@ def test_refresh_stats_watchlist_per_account_error_isolation() -> None:
     """list_by_author failure for account A => account B still processed."""
     from vidscope.application.refresh_stats import (
         RefreshStatsForWatchlistUseCase,
-        RefreshStatsResult,
     )
 
     account_a = _make_watched_account(platform=Platform.YOUTUBE, handle="ghost")

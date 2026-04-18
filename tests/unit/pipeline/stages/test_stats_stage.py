@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import MagicMock
@@ -122,6 +121,7 @@ def test_stats_stage_not_in_default_pipeline(tmp_path: Any) -> None:
     for unit tests and avoids I/O in the test suite.
     """
     import inspect
+
     import vidscope.infrastructure.container as container_mod
 
     source = inspect.getsource(container_mod)

@@ -9,7 +9,6 @@ import pytest
 from vidscope.adapters.config.yaml_taxonomy import YamlTaxonomy
 from vidscope.ports import TaxonomyCatalog
 
-
 REPO_ROOT = Path(__file__).resolve().parents[4]
 REAL_TAXONOMY = REPO_ROOT / "config" / "taxonomy.yaml"
 

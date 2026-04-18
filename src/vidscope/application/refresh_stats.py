@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from vidscope.domain import DomainError, VideoId, VideoStats
 from vidscope.pipeline.stages.stats_stage import StatsStage
@@ -101,7 +101,7 @@ class RefreshStatsUseCase:
                     stats=None,
                     message=str(exc),
                 )
-            except Exception as exc:  # noqa: BLE001 — standalone stage, not in runner
+            except Exception as exc:
                 return RefreshStatsResult(
                     success=False,
                     video_id=int(video_id),
@@ -179,7 +179,7 @@ class RefreshStatsUseCase:
                 continue
             try:
                 res = self.execute_one(video.id)
-            except Exception as exc:  # noqa: BLE001 — batch isolation
+            except Exception as exc:
                 res = RefreshStatsResult(
                     success=False,
                     video_id=int(video.id),
@@ -271,7 +271,7 @@ class RefreshStatsForWatchlistUseCase:
                     videos = uow.videos.list_by_author(
                         account.platform, account.handle, limit=1000
                     )
-                except Exception as exc:  # noqa: BLE001 — per-account isolation (T-ISO-01)
+                except Exception as exc:
                     errors.append(f"list videos failed for {label_prefix}: {exc}")
                     continue
                 for v in videos:
@@ -290,7 +290,7 @@ class RefreshStatsForWatchlistUseCase:
             videos_checked += 1
             try:
                 res = self._refresh.execute_one(vid)
-            except Exception as exc:  # noqa: BLE001 — per-video isolation (T-ISO-02)
+            except Exception as exc:
                 failed += 1
                 errors.append(f"{label}: unexpected error: {exc}")
                 continue

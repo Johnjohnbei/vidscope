@@ -433,5 +433,5 @@ class TestPyyamlAvailable:
     """Ensure pyyaml is a direct dependency (not just transitive)."""
 
     def test_yaml_importable(self) -> None:
-        import yaml  # noqa: PLC0415
+        import yaml
         assert hasattr(yaml, "safe_load")

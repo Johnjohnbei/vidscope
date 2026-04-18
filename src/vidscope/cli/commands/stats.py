@@ -23,7 +23,11 @@ from typing import Annotated
 
 import typer
 
-from vidscope.application.refresh_stats import RefreshStatsBatchResult, RefreshStatsResult, RefreshStatsUseCase
+from vidscope.application.refresh_stats import (
+    RefreshStatsBatchResult,
+    RefreshStatsResult,
+    RefreshStatsUseCase,
+)
 from vidscope.cli._support import acquire_container, console, fail_user, handle_domain_errors
 from vidscope.domain import VideoId
 

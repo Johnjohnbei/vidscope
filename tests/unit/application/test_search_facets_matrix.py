@@ -10,14 +10,14 @@ from __future__ import annotations
 import itertools
 import random
 
-from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
-from vidscope.domain import ContentType, TrackingStatus
-
 # Import fakes from the M011 test module to avoid duplicating
 from tests.unit.application.test_search_videos_m011 import (
-    FakeHit, _FakeUoW, _factory,
+    FakeHit,
+    _factory,
+    _FakeUoW,
 )
-
+from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
+from vidscope.domain import ContentType, TrackingStatus
 
 FACETS = (
     "content_type", "min_actionability", "is_sponsored",

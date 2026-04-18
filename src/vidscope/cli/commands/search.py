@@ -13,10 +13,14 @@ from typing import Annotated
 import typer
 from rich.table import Table
 
-from vidscope.application.search_library import SearchLibraryResult, SearchLibraryUseCase
 from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
-from vidscope.cli._support import acquire_container, console, handle_domain_errors, parse_tracking_status
-from vidscope.domain import ContentType, TrackingStatus
+from vidscope.cli._support import (
+    acquire_container,
+    console,
+    handle_domain_errors,
+    parse_tracking_status,
+)
+from vidscope.domain import ContentType
 
 __all__ = ["search_command"]
 

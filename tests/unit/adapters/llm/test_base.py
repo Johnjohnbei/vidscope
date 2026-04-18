@@ -12,9 +12,9 @@ import httpx
 import pytest
 
 from vidscope.adapters.llm._base import (
+    _SYSTEM_PROMPT,
     DEFAULT_MAX_ATTEMPTS,
     LlmCallContext,
-    _SYSTEM_PROMPT,
     _parse_bool_flag,
     _parse_content_type,
     _parse_reasoning,

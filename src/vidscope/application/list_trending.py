@@ -12,15 +12,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 
-from vidscope.domain import Platform, VideoId
+from vidscope.domain import Platform
 from vidscope.domain.metrics import engagement_rate, views_velocity_24h
 from vidscope.ports import UnitOfWorkFactory
 from vidscope.ports.clock import Clock
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = ["ListTrendingUseCase", "TrendingEntry"]
 

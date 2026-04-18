@@ -368,8 +368,8 @@ class VideoStatsRepository(Protocol):
     def rank_candidates_by_delta(
         self,
         *,
-        since: "datetime",
-        platform: "Platform | None" = None,
+        since: datetime,
+        platform: Platform | None = None,
         limit: int = 100,
     ) -> list[VideoId]:
         """Return video_ids sorted by SQL-approximated view-delta on the window.

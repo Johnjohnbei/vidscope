@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy import Engine, text
 
 from vidscope.adapters.sqlite.video_tracking_repository import (

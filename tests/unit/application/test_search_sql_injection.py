@@ -17,7 +17,6 @@ from sqlalchemy import Engine, text
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
 
-
 MALICIOUS_PAYLOADS = [
     "'",
     "--",

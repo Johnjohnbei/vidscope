@@ -7,8 +7,6 @@ keeps user annotations safe across re-ingests.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from sqlalchemy import Engine, text
 
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork

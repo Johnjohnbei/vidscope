@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
-from vidscope.domain import DomainError, StageName, VideoStats
+from vidscope.domain import DomainError, StageName
 from vidscope.ports import PipelineContext, StageResult, UnitOfWork
 from vidscope.ports.stats_probe import StatsProbe
 

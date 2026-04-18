@@ -14,8 +14,6 @@ import json
 from collections import Counter
 from pathlib import Path
 
-import pytest
-
 from vidscope.adapters.heuristic.heuristic_v2 import HeuristicAnalyzerV2
 from vidscope.domain import (
     ContentType,
@@ -24,7 +22,6 @@ from vidscope.domain import (
     Transcript,
     VideoId,
 )
-
 
 GOLDEN_PATH = Path(__file__).resolve().parents[3] / "fixtures" / "analysis_golden.jsonl"
 GATE_THRESHOLD = 0.70

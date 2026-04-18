@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from vidscope.application.list_creator_videos import (
-    ListCreatorVideosResult,
     ListCreatorVideosUseCase,
 )
 from vidscope.domain import Creator, Platform, Video

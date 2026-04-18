@@ -210,7 +210,7 @@ def refresh(
                 unit_of_work_factory=container.unit_of_work,
             )
             stats_result = stats_uc.execute()
-        except Exception as exc:  # noqa: BLE001 — resilience (T-ISO-03)
+        except Exception as exc:
             stats_error = f"stats refresh failed: {exc}"
 
         _render_combined_summary(watch_summary, stats_result, stats_error)
@@ -226,8 +226,8 @@ def _render_combined_summary(
     Matches D-05 requirement: both counters (new_videos + stats_refreshed)
     visible in one output. ASCII-only — no Unicode glyphs.
     """
-    from vidscope.application.watchlist import RefreshSummary
     from vidscope.application.refresh_stats import RefreshStatsForWatchlistResult
+    from vidscope.application.watchlist import RefreshSummary
 
     assert isinstance(watch_summary, RefreshSummary)
 

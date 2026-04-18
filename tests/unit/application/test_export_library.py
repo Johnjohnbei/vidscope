@@ -30,8 +30,13 @@ def _seeded_db(engine):
     """Seed the DB with 3 videos + analyses + tracking + tags + collections."""
     from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
     from vidscope.domain import (
-        Analysis, Language, Platform, PlatformId, Video,
-        VideoId, VideoTracking,
+        Analysis,
+        Language,
+        Platform,
+        PlatformId,
+        Video,
+        VideoId,
+        VideoTracking,
     )
 
     ids: list[int] = []

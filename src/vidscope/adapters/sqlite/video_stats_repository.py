@@ -133,7 +133,7 @@ class VideoStatsRepositorySQLite:
         self,
         *,
         since: datetime,
-        platform: "Platform | None" = None,
+        platform: Platform | None = None,
         limit: int = 100,
     ) -> list[VideoId]:
         """Return video_ids sorted by SQL-approximated view-delta descending.

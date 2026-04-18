@@ -7,7 +7,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from vidscope.application.explain_analysis import (
-    ExplainAnalysisResult,
     ExplainAnalysisUseCase,
 )
 from vidscope.domain import (

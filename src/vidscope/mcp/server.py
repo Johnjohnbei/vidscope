@@ -48,7 +48,6 @@ from vidscope.application import (
     IngestVideoUseCase,
     ListTrendingUseCase,
     ListVideosUseCase,
-    SearchLibraryUseCase,
     ShowVideoUseCase,
     SuggestRelatedUseCase,
 )
@@ -146,7 +145,8 @@ def build_mcp_server(container: Container) -> FastMCP:
         workflow facets (status, starred, tag, collection).
         """
         from vidscope.application.search_videos import (  # noqa: PLC0415
-            SearchFilters, SearchVideosUseCase,
+            SearchFilters,
+            SearchVideosUseCase,
         )
         from vidscope.domain import ContentType, TrackingStatus  # noqa: PLC0415
 

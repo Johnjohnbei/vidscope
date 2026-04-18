@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 from vidscope.application.set_video_tracking import (
     SetVideoTrackingResult,
     SetVideoTrackingUseCase,

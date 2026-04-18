@@ -179,7 +179,7 @@ class VisualIntelligenceStage:
 
             try:
                 resolved = self._media_storage.resolve(frame.image_key)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _logger.warning(
                     "visual_intelligence: failed to resolve %s for video %s: %s",
                     frame.image_key,
@@ -259,7 +259,7 @@ class VisualIntelligenceStage:
                     # T-M008-S03-06 defensive: never store empty string
                     stored_key = self._media_storage.store(thumb_key, source_path)
                     thumbnail_key = stored_key if stored_key else None
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _logger.warning(
                     "visual_intelligence: thumbnail copy failed for video %s: %s",
                     ctx.video_id,

@@ -27,8 +27,8 @@ section() { echo; echo "── $* ──"; }
 
 # ── 1. Architecture contracts ──────────────────────────────────────────────
 section "Architecture (import-linter)"
-uv run python -m importlinter --config .importlinter 2>&1 | grep -E "^(Keeping|Breaking|All)" | head -20
-uv run python -m importlinter --config .importlinter > /dev/null && pass "import-linter: 11/11 contracts KEPT" || fail "import-linter"
+PYTHONUTF8=1 uv run lint-imports 2>&1 | grep -E "(KEPT|BROKEN|Contracts)" | head -20
+PYTHONUTF8=1 uv run lint-imports > /dev/null 2>&1 && pass "import-linter: 11/11 contracts KEPT" || fail "import-linter"
 
 # ── 2. Unit tests — all M011 slices ───────────────────────────────────────
 section "Unit tests (S01–S04)"

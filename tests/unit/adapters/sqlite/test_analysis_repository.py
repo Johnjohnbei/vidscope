@@ -6,7 +6,6 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 from sqlalchemy import Engine, text
 
 from vidscope.adapters.sqlite.analysis_repository import AnalysisRepositorySQLite

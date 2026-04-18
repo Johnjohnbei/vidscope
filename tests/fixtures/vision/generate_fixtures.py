@@ -17,7 +17,7 @@ FIXTURE_DIR = Path(__file__).parent
 
 def _require_pil() -> None:
     try:
-        import PIL  # noqa: F401, PLC0415
+        import PIL  # noqa: F401
     except ImportError as exc:
         raise SystemExit(
             "Pillow is required to generate vision fixtures.\n"
@@ -28,7 +28,7 @@ def _require_pil() -> None:
 def generate_text_jpg(
     path: Path, text: str, size: tuple[int, int] = (400, 100)
 ) -> None:
-    from PIL import Image, ImageDraw  # noqa: PLC0415
+    from PIL import Image, ImageDraw
 
     img = Image.new("RGB", size, color="white")
     draw = ImageDraw.Draw(img)
@@ -40,7 +40,7 @@ def generate_text_jpg(
 def generate_blank_jpg(
     path: Path, size: tuple[int, int] = (400, 100), color: str = "white"
 ) -> None:
-    from PIL import Image  # noqa: PLC0415
+    from PIL import Image
 
     img = Image.new("RGB", size, color=color)
     img.save(path, format="JPEG", quality=95)

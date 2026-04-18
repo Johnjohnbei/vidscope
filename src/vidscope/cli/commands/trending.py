@@ -20,7 +20,6 @@ from vidscope.application.list_trending import ListTrendingUseCase, TrendingEntr
 from vidscope.cli._support import (
     acquire_container,
     console,
-    fail_user,
     handle_domain_errors,
 )
 from vidscope.domain import Platform

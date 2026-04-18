@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy import Engine
 
-from vidscope.adapters.sqlite.video_stats_repository import VideoStatsRepositorySQLite
 from vidscope.adapters.sqlite.video_repository import VideoRepositorySQLite
+from vidscope.adapters.sqlite.video_stats_repository import VideoStatsRepositorySQLite
 from vidscope.domain import Platform, PlatformId, Video, VideoId, VideoStats
-from vidscope.domain.errors import StorageError
 
 
 def _persist_video(engine: Engine) -> VideoId:

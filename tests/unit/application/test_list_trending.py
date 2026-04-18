@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vidscope.application.list_trending import ListTrendingUseCase, TrendingEntry
+from vidscope.application.list_trending import ListTrendingUseCase
 from vidscope.domain import Platform, PlatformId, Video, VideoId, VideoStats
 
 

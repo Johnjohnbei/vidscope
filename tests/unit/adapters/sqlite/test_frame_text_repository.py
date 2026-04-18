@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from sqlalchemy import Engine, text
 
-from vidscope.adapters.sqlite.frame_text_repository import FrameTextRepositorySQLite
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
+from vidscope.adapters.sqlite.frame_text_repository import FrameTextRepositorySQLite
 from vidscope.adapters.sqlite.video_repository import VideoRepositorySQLite
 from vidscope.domain import Frame, FrameText, Platform, PlatformId, Video, VideoId
 

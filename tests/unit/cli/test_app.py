@@ -140,8 +140,9 @@ def stub_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_app_help_lists_explain_command() -> None:
-    from vidscope.cli.app import app
     from typer.testing import CliRunner
+
+    from vidscope.cli.app import app
     res = CliRunner().invoke(app, ["--help"])
     assert res.exit_code == 0
     assert "explain" in res.stdout.lower()

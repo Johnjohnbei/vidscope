@@ -8,7 +8,7 @@ It exposes both a **CLI** (`vidscope add <url>`, `vidscope search <query>`) and 
 
 ## Status
 
-✅ **All 5 planned milestones complete.** 618 unit tests passing, 84 source files mypy strict-clean, 9 import-linter contracts enforcing the hexagonal architecture, ruff clean.
+✅ **All 11 planned milestones complete.** 1292 unit tests passing, 84 source files mypy strict-clean, 11 import-linter contracts enforcing the hexagonal architecture.
 
 ## What you get
 
@@ -41,6 +41,29 @@ vidscope add <url>
 
 # Expose everything to an AI agent via the Model Context Protocol
 vidscope mcp serve
+
+# Mark a video as saved/archived/skipped, add a star, leave a note
+vidscope review <video-id> --status saved --star --note "great hook"
+
+# Tag videos
+vidscope tag add <video-id> <tag>
+vidscope tag remove <video-id> <tag>
+vidscope tag list <video-id>
+
+# Organise videos into collections
+vidscope collection create <name>
+vidscope collection add <name> <video-id>
+vidscope collection remove <name> <video-id>
+vidscope collection list
+vidscope collection show <name>
+
+# Search with filters (status, star, tag, collection)
+vidscope search "<query>" --status saved --starred --tag hooks --collection "my-list"
+
+# Export your library
+vidscope export --format json
+vidscope export --format markdown --out report.md
+vidscope export --format csv --out report.csv
 ```
 
 ## The pipeline
@@ -57,7 +80,7 @@ Re-running `vidscope add` on a video that previously failed resumes from the las
 
 ## Architecture
 
-VidScope uses a **strict hexagonal architecture** enforced by [import-linter](https://import-linter.readthedocs.io/) at 9 contracts. The layers, innermost first:
+VidScope uses a **strict hexagonal architecture** enforced by [import-linter](https://import-linter.readthedocs.io/) at 11 contracts. The layers, innermost first:
 
 - `vidscope.domain` — entities, value objects, typed errors. **Zero project imports, zero third-party runtime deps** (stdlib + typing only).
 - `vidscope.ports` — Protocol interfaces. Imports only `domain`.
@@ -67,7 +90,7 @@ VidScope uses a **strict hexagonal architecture** enforced by [import-linter](ht
 - `vidscope.cli` and `vidscope.mcp` — thin dispatch to use cases.
 - `vidscope.infrastructure` — composition root. Builds the config, wires adapters to ports, instantiates use cases.
 
-The 9 contracts are enforced via `python -m uv run lint-imports` and run on every quality gate.
+The 11 contracts are enforced via `python -m uv run lint-imports` and run on every quality gate.
 
 ## Stack
 
@@ -122,8 +145,8 @@ Every change must pass four gates:
 ```bash
 python -m uv run ruff check .                         # lint
 python -m uv run mypy src                             # type check (strict mode)
-python -m uv run pytest -q                            # 618 unit tests
-python -m uv run lint-imports                         # 9 architecture contracts
+python -m uv run pytest -q                            # 1292 unit tests
+python -m uv run lint-imports                         # 11 architecture contracts
 ```
 
 Plus the per-milestone verification scripts:
@@ -134,9 +157,10 @@ bash scripts/verify-m002.sh        # 10 steps — MCP server + suggest_related
 bash scripts/verify-m003.sh        # 9 steps — watchlist + refresh
 bash scripts/verify-m004.sh        # 9 steps — 5 LLM analyzers via stub HTTP
 bash scripts/verify-m005.sh        # 10 steps — cookies UX with stub yt_dlp
+bash scripts/verify-m011.sh        # 10 steps — review, tags, collections, export
 ```
 
-All five exit 0. The verify scripts use stubbed networks for reproducibility — manual live validation against real providers is documented in each milestone's UAT.
+All six exit 0 (stub-network mode; pass `--skip-integration` to bypass live checks). The verify scripts use stubbed networks for reproducibility — manual live validation against real providers is documented in each milestone's UAT.
 
 ## Installation
 
@@ -163,8 +187,9 @@ src/vidscope/
     whisper/        # transcriber
     ffmpeg/         # frame extractor
     heuristic/      # zero-cost analyzer
-    llm/            # 5 LLM provider analyzers (M004)
+    llm/            # 5 LLM provider analyzers
     fs/             # local media storage
+    export/         # JSON / Markdown / CSV exporters
   pipeline/         # 5-stage runner
   application/      # use cases (one per CLI / MCP entry point)
   cli/              # Typer CLI + sub-applications (mcp, watch, cookies)

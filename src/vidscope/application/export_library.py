@@ -16,8 +16,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+
 from vidscope.application.search_videos import SearchFilters
-from vidscope.domain import Collection, Tag, TrackingStatus, VideoId
+from vidscope.domain import Collection, Tag, VideoId
 from vidscope.ports import Exporter, UnitOfWorkFactory
 
 __all__ = ["ExportLibraryUseCase", "ExportRecord"]
