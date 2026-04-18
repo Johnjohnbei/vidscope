@@ -1285,3 +1285,286 @@ class TestCreatorInfoExtraction:
         assert outcome.author == "Test Channel"
         assert outcome.view_count == 1234
         assert outcome.creator_info is None
+
+
+# ---------------------------------------------------------------------------
+# M007/S03-P01 T02 — _extract_mentions / _extract_hashtags / _extract_music_artist
+# ---------------------------------------------------------------------------
+
+
+class TestExtractMentions:
+    """Unit tests for the private helper _extract_mentions.
+
+    Each test calls _extract_mentions directly with a description string
+    and verifies the returned tuple of Mention objects.
+    """
+
+    def test_description_with_mentions_returns_correct_handles(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform
+
+        ms = _extract_mentions(
+            "Check #Cooking @alice https://shop.com", Platform.TIKTOK
+        )
+        handles = {m.handle.lower() for m in ms}
+        assert "alice" in handles
+
+    def test_multiple_mentions_all_captured(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform
+
+        ms = _extract_mentions(
+            "@alice @bob @charlie_xyz and @d.e", Platform.YOUTUBE
+        )
+        assert len(ms) == 4
+        handles = {m.handle.lower() for m in ms}
+        assert handles == {"alice", "bob", "charlie_xyz", "d.e"}
+
+    def test_dedup_same_handle_returns_one_mention(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform
+
+        ms = _extract_mentions("@alice @alice", Platform.YOUTUBE)
+        assert len(ms) == 1
+        assert ms[0].handle.lower() == "alice"
+
+    def test_empty_description_returns_empty_tuple(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform
+
+        assert _extract_mentions("", Platform.YOUTUBE) == ()
+
+    def test_none_description_returns_empty_tuple(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform
+
+        assert _extract_mentions(None, Platform.YOUTUBE) == ()
+
+    def test_mentions_have_video_id_placeholder_zero(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform, VideoId
+
+        ms = _extract_mentions("@bob", Platform.YOUTUBE)
+        assert len(ms) == 1
+        assert ms[0].video_id == VideoId(0)
+
+    def test_mentions_have_platform_none(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform
+
+        ms = _extract_mentions("@alice", Platform.TIKTOK)
+        assert len(ms) == 1
+        assert ms[0].platform is None
+
+    def test_two_mentions_two_bots(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_mentions
+        from vidscope.domain import Platform
+
+        ms = _extract_mentions("@alice and @bob_x @alice", Platform.TIKTOK)
+        assert len(ms) == 2
+        assert {m.handle.lower() for m in ms} == {"alice", "bob_x"}
+
+
+class TestExtractHashtags:
+    """Unit tests for the private helper _extract_hashtags."""
+
+    def test_tags_list_returned_as_tuple(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_hashtags
+
+        t = _extract_hashtags({"tags": ["a", "b", "#c"]})
+        assert t == ("a", "b", "#c")
+
+    def test_missing_tags_key_returns_empty(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_hashtags
+
+        assert _extract_hashtags({}) == ()
+
+    def test_none_tags_returns_empty(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_hashtags
+
+        assert _extract_hashtags({"tags": None}) == ()
+
+    def test_empty_tags_list_returns_empty(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_hashtags
+
+        assert _extract_hashtags({"tags": []}) == ()
+
+    def test_falsy_entries_stripped(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_hashtags
+
+        t = _extract_hashtags({"tags": ["cooking", "", "recipe"]})
+        assert t == ("cooking", "recipe")
+
+
+class TestExtractMusicArtist:
+    """Unit tests for the private helper _extract_music_artist."""
+
+    def test_artists_list_returns_first(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_music_artist
+
+        assert (
+            _extract_music_artist({"artists": ["First", "Second"]}) == "First"
+        )
+
+    def test_artist_singular_fallback(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_music_artist
+
+        assert _extract_music_artist({"artist": "Fallback"}) == "Fallback"
+
+    def test_no_music_keys_returns_none(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_music_artist
+
+        assert _extract_music_artist({}) is None
+
+    def test_empty_artists_list_falls_back_to_artist(self) -> None:
+        from vidscope.adapters.ytdlp.downloader import _extract_music_artist
+
+        assert (
+            _extract_music_artist({"artists": [], "artist": "Fallback"})
+            == "Fallback"
+        )
+
+
+class TestInfoToOutcomeM007:
+    """Integration tests: _info_to_outcome carries M007 fields through."""
+
+    def _make_info(self, tmp_path: Path, **extra: object) -> dict[str, Any]:
+        """Build a minimal valid info dict with an actual file on disk."""
+        dest = tmp_path / "abc.mp4"
+        dest.write_bytes(b"fake")
+        base: dict[str, Any] = {
+            "id": "abc",
+            "extractor_key": "Youtube",
+            "webpage_url": "https://www.youtube.com/watch?v=abc",
+            "title": "Test",
+            "uploader": "Channel",
+            "duration": 10.0,
+            "requested_downloads": [{"filepath": str(dest)}],
+        }
+        base.update(extra)
+        return base
+
+    def test_description_propagated(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(
+            tmp_path,
+            description="Check #Cooking @alice https://shop.com",
+        )
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.description == "Check #Cooking @alice https://shop.com"
+
+    def test_hashtags_from_tags(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(
+            tmp_path,
+            tags=["cooking", "recipe", "#Dessert"],
+        )
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.hashtags == ("cooking", "recipe", "#Dessert")
+
+    def test_mentions_extracted_from_description(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(
+            tmp_path,
+            description="@alice @bob @charlie_xyz and @d.e",
+        )
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert len(outcome.mentions) == 4
+        handles = {m.handle.lower() for m in outcome.mentions}
+        assert handles == {"alice", "bob", "charlie_xyz", "d.e"}
+
+    def test_music_track_and_artist_extracted(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(
+            tmp_path,
+            track="Original sound",
+            artists=["@creator123"],
+        )
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.music_track == "Original sound"
+        assert outcome.music_artist == "@creator123"
+
+    def test_artist_singular_fallback_in_outcome(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(tmp_path, artist="Fallback")
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.music_artist == "Fallback"
+
+    def test_artists_list_returns_first_artist_only(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(tmp_path, artists=["A", "B"])
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.music_artist == "A"
+
+    def test_no_m007_keys_means_all_none_or_empty(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(tmp_path)
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.description is None
+        assert outcome.hashtags == ()
+        assert outcome.mentions == ()
+        assert outcome.music_track is None
+        assert outcome.music_artist is None

@@ -37,13 +37,21 @@ Design notes
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Final
 
 import yt_dlp
 from yt_dlp.utils import DownloadError, ExtractorError
 
-from vidscope.domain import CookieAuthError, IngestError, Platform, PlatformId
+from vidscope.domain import (
+    CookieAuthError,
+    IngestError,
+    Mention,
+    Platform,
+    PlatformId,
+    VideoId,
+)
 from vidscope.ports import (
     ChannelEntry,
     CreatorInfo,
@@ -409,6 +417,7 @@ def _info_to_outcome(
             retryable=False,
         )
 
+    description = _str_or_none(info.get("description"))
     return IngestOutcome(
         platform=platform,
         platform_id=platform_id,
@@ -420,6 +429,11 @@ def _info_to_outcome(
         upload_date=_str_or_none(info.get("upload_date")),
         view_count=_int_or_none(info.get("view_count")),
         creator_info=_extract_creator_info(info),
+        description=description,
+        hashtags=_extract_hashtags(info),
+        mentions=_extract_mentions(description, platform),
+        music_track=_str_or_none(info.get("track")),
+        music_artist=_extract_music_artist(info),
     )
 
 
@@ -635,6 +649,81 @@ def _extract_creator_info(info: dict[str, Any]) -> CreatorInfo | None:
         ),
         is_verified=_extract_uploader_verified(info),
     )
+
+
+# Pattern matches "@" followed by a word-character run that may contain
+# dots or underscores (max 64 chars total). Simple bounded pattern —
+# no nested quantifiers — safe against ReDoS (T-S03P01-02).
+_MENTION_PATTERN = re.compile(r"@([\w][\w.]{0,63})")
+
+
+def _extract_mentions(
+    description: str | None, platform: Platform
+) -> tuple[Mention, ...]:
+    """Extract ``@handle`` mentions from a video description.
+
+    Handles are returned raw (the repository layer canonicalises
+    lowercase). Returns ``()`` for falsy input. Deduplicates by
+    lowercased handle. Every :class:`Mention` carries
+    ``video_id=VideoId(0)`` as a placeholder — :class:`IngestStage`
+    replaces it with the persisted video id before writing.
+    """
+    _ = platform  # platform parameter reserved for future use
+    if not description:
+        return ()
+
+    seen: set[str] = set()
+    mentions: list[Mention] = []
+    for match in _MENTION_PATTERN.finditer(description):
+        handle = match.group(1)
+        key = handle.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        mentions.append(
+            Mention(
+                video_id=VideoId(0),
+                handle=handle,
+                platform=None,
+            )
+        )
+    return tuple(mentions)
+
+
+def _extract_hashtags(info: dict[str, Any]) -> tuple[str, ...]:
+    """Extract hashtags from a yt-dlp ``info_dict``.
+
+    yt-dlp exposes hashtags as ``info["tags"]`` — a list of bare
+    strings. The list may be missing, ``None``, or contain non-string
+    entries on pathological platforms: we coerce to ``tuple[str, ...]``
+    and drop falsy entries. The repository layer canonicalises
+    (lowercase + lstrip '#') — this helper preserves whatever yt-dlp
+    returned verbatim.
+    """
+    raw = info.get("tags")
+    if not raw or not isinstance(raw, list):
+        return ()
+    cleaned = [str(t).strip() for t in raw if t]
+    return tuple(t for t in cleaned if t)
+
+
+def _extract_music_artist(info: dict[str, Any]) -> str | None:
+    """Resolve the music artist from a yt-dlp ``info_dict``.
+
+    Preference order (per RESEARCH §A1, Q-03):
+    1. ``info["artists"]`` (list) — first entry only in M007.
+    2. ``info["artist"]`` (deprecated singular) — fallback.
+
+    Returns ``None`` when the platform exposes neither.
+    """
+    artists = info.get("artists")
+    if isinstance(artists, list) and artists:
+        first = artists[0]
+        if first is not None:
+            text = str(first).strip()
+            if text:
+                return text
+    return _str_or_none(info.get("artist"))
 
 
 def _extract_uploader_thumbnail(info: dict[str, Any]) -> str | None:
