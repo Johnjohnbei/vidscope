@@ -47,12 +47,13 @@ class TestBuildContainer:
         # S05 additions: analyzer + analyze stage
         assert container.analyzer is not None
         assert container.analyzer.provider_name == "heuristic"
-        # S06 additions: index stage closes the pipeline
+        # M007/S03-P02: metadata_extract stage inserted between analyze and index
         assert container.pipeline_runner.stage_names == (
             "ingest",
             "transcribe",
             "frames",
             "analyze",
+            "metadata_extract",
             "index",
         )
 

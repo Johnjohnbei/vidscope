@@ -14,8 +14,7 @@ import pytest
 
 from vidscope.domain import IndexingError, Link, VideoId
 from vidscope.pipeline.stages.metadata_extract import MetadataExtractStage
-from vidscope.ports.link_extractor import RawLink
-
+from vidscope.ports import RawLink
 
 # ---------------------------------------------------------------------------
 # Fakes

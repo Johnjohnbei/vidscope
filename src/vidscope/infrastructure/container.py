@@ -46,6 +46,7 @@ from vidscope.adapters.ffmpeg import FfmpegFrameExtractor
 from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+from vidscope.adapters.text import RegexLinkExtractor
 from vidscope.adapters.whisper import FasterWhisperTranscriber
 from vidscope.adapters.ytdlp import YtdlpDownloader
 from vidscope.infrastructure.analyzer_registry import build_analyzer
@@ -57,6 +58,7 @@ from vidscope.pipeline.stages import (
     FramesStage,
     IndexStage,
     IngestStage,
+    MetadataExtractStage,
     TranscribeStage,
 )
 from vidscope.ports.clock import Clock
@@ -215,6 +217,10 @@ def build_container(config: Config | None = None) -> Container:
         cache_dir=resolved_config.cache_dir,
     )
     analyze_stage = AnalyzeStage(analyzer=analyzer)
+    link_extractor = RegexLinkExtractor()
+    metadata_extract_stage = MetadataExtractStage(
+        link_extractor=link_extractor,
+    )
     index_stage = IndexStage()
 
     pipeline_runner = PipelineRunner(
@@ -223,6 +229,7 @@ def build_container(config: Config | None = None) -> Container:
             transcribe_stage,
             frames_stage,
             analyze_stage,
+            metadata_extract_stage,
             index_stage,
         ],
         unit_of_work_factory=_uow_factory,

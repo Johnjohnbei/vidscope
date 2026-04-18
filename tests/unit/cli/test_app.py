@@ -173,9 +173,9 @@ class TestStatus:
     def test_after_add_shows_runs_for_each_stage(
         self, runner: CliRunner, stub_pipeline: None
     ) -> None:
-        """After S06 the pipeline has FIVE stages (ingest, transcribe,
-        frames, analyze, index), so a single `vidscope add` produces
-        five pipeline_runs."""
+        """After M007/S03-P02 the pipeline has SIX stages (ingest, transcribe,
+        frames, analyze, metadata_extract, index), so a single `vidscope add`
+        produces six pipeline_runs."""
         add_result = runner.invoke(
             app, ["add", "https://www.youtube.com/watch?v=cli-stub"]
         )
@@ -183,12 +183,13 @@ class TestStatus:
 
         status_result = runner.invoke(app, ["status"])
         assert status_result.exit_code == EXIT_OK
-        # Five pipeline_runs: one per stage
-        assert "pipeline runs: 5" in status_result.stdout
+        # Six pipeline_runs: one per stage
+        assert "pipeline runs: 6" in status_result.stdout
         assert "ingest" in status_result.stdout
         assert "transcribe" in status_result.stdout
         assert "frames" in status_result.stdout
         assert "analyze" in status_result.stdout
+        assert "metadata_extract" in status_result.stdout
         assert "index" in status_result.stdout
         assert "ok" in status_result.stdout.lower()
 
