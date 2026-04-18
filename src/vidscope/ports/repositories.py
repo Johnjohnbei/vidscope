@@ -332,3 +332,37 @@ class VideoStatsRepository(Protocol):
         videos eligible for trend analysis.
         """
         ...
+
+    def rank_candidates_by_delta(
+        self,
+        *,
+        since: "datetime",
+        platform: "Platform | None" = None,
+        limit: int = 100,
+    ) -> list[VideoId]:
+        """Return video_ids sorted by SQL-approximated view-delta on the window.
+
+        Applies GROUP BY video_id + HAVING count >= 2 + LIMIT at the SQL
+        level per D-04 scalability. The use case then computes the exact
+        metrics on the returned subset via metrics.py pure-domain functions.
+
+        Parameters
+        ----------
+        since:
+            Cutoff datetime — only snapshots at or after this timestamp
+            are included in the delta computation.
+        platform:
+            Optional filter. When provided, only videos belonging to that
+            platform are returned. The join is done in SQL (not Python).
+        limit:
+            Maximum number of candidate video_ids to return. Applied at
+            the SQL level (D-04) so no full table scan in Python.
+
+        Returns
+        -------
+        list[VideoId]
+            Video ids ordered by approximate view delta descending (largest
+            growth first). May be smaller than ``limit`` when fewer videos
+            qualify.
+        """
+        ...

@@ -19,7 +19,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 
 from vidscope.adapters.sqlite.schema import video_stats as video_stats_table
-from vidscope.domain import VideoId, VideoStats
+from vidscope.domain import Platform, VideoId, VideoStats
 
 __all__ = ["VideoStatsRepositorySQLite"]
 
@@ -126,6 +126,54 @@ class VideoStatsRepositorySQLite:
             .having(func.count(video_stats_table.c.id) >= min_snapshots)
             .limit(limit)
         )
+        rows = self._conn.execute(stmt).all()
+        return [VideoId(int(row[0])) for row in rows]
+
+    def rank_candidates_by_delta(
+        self,
+        *,
+        since: datetime,
+        platform: "Platform | None" = None,
+        limit: int = 100,
+    ) -> list[VideoId]:
+        """Return video_ids sorted by SQL-approximated view-delta descending.
+
+        Scalability (D-04): GROUP BY + HAVING + ORDER BY + LIMIT are all
+        evaluated in SQL. Python only touches the resulting candidate list,
+        never the full table. This keeps the trending computation O(K) where
+        K is the candidate limit, not O(N) over the full stats table.
+
+        Security (T-SQL-01): All parameters use SQLAlchemy Core bind params.
+        platform.value is passed as a bind parameter via .where(), never
+        interpolated into a raw SQL string. int(limit) cast prevents injection.
+        """
+        from vidscope.adapters.sqlite.schema import videos as videos_table  # noqa: PLC0415
+
+        delta_expr = (
+            func.max(video_stats_table.c.view_count)
+            - func.min(video_stats_table.c.view_count)
+        )
+        snap_count_expr = func.count(video_stats_table.c.id)
+
+        stmt = (
+            select(video_stats_table.c.video_id)
+            .where(video_stats_table.c.captured_at >= since)
+            .where(video_stats_table.c.view_count.is_not(None))
+        )
+
+        if platform is not None:
+            stmt = stmt.join(
+                videos_table,
+                videos_table.c.id == video_stats_table.c.video_id,
+            ).where(videos_table.c.platform == platform.value)
+
+        stmt = (
+            stmt.group_by(video_stats_table.c.video_id)
+            .having(snap_count_expr >= 2)
+            .order_by(delta_expr.desc())
+            .limit(int(limit))
+        )
+
         rows = self._conn.execute(stmt).all()
         return [VideoId(int(row[0])) for row in rows]
 

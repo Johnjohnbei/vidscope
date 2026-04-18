@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from vidscope.application.get_status import GetStatusResult, GetStatusUseCase
 from vidscope.application.ingest_video import IngestResult, IngestVideoUseCase
+from vidscope.application.list_trending import ListTrendingUseCase, TrendingEntry
 from vidscope.application.refresh_stats import (
     RefreshStatsBatchResult,
     RefreshStatsForWatchlistResult,
@@ -60,6 +61,8 @@ __all__ = [
     "GetStatusUseCase",
     "IngestResult",
     "IngestVideoUseCase",
+    "ListTrendingUseCase",
+    "TrendingEntry",
     "RefreshStatsBatchResult",
     "RefreshStatsForWatchlistResult",
     "RefreshStatsForWatchlistUseCase",
