@@ -24,6 +24,7 @@ from enum import StrEnum
 from typing import NewType
 
 __all__ = [
+    "ContentShape",
     "CreatorId",
     "Language",
     "Platform",
@@ -81,6 +82,26 @@ class Language(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ContentShape(StrEnum):
+    """High-level classification of a video's visual form.
+
+    Computed by M008 :class:`VisualIntelligenceStage` from a
+    face-count heuristic over extracted frames. Persisted as a
+    string column on the ``videos`` table (per M008 RESEARCH §5.1
+    — direct column, no side entity).
+
+    - ``TALKING_HEAD`` — ≥ 40% of frames show at least one face
+    - ``BROLL`` — zero frames show a face
+    - ``MIXED`` — between the two
+    - ``UNKNOWN`` — no frames were processed or OpenCV unavailable
+    """
+
+    TALKING_HEAD = "talking_head"
+    BROLL = "broll"
+    MIXED = "mixed"
+    UNKNOWN = "unknown"
+
+
 class StageName(StrEnum):
     """Discrete stage of the ingestion pipeline.
 
@@ -92,6 +113,7 @@ class StageName(StrEnum):
     TRANSCRIBE = "transcribe"
     FRAMES = "frames"
     ANALYZE = "analyze"
+    VISUAL_INTELLIGENCE = "visual_intelligence"
     METADATA_EXTRACT = "metadata_extract"
     INDEX = "index"
 

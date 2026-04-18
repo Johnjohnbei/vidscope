@@ -14,6 +14,7 @@ from vidscope.domain.entities import (
     Analysis,
     Creator,
     Frame,
+    FrameText,
     Hashtag,
     Link,
     Mention,
@@ -465,3 +466,60 @@ class TestLink:
             position_ms=12_345,
         )
         assert ln.position_ms == 12_345
+
+
+class TestFrameText:
+    def _minimal(self) -> FrameText:
+        return FrameText(
+            video_id=VideoId(1),
+            frame_id=5,
+            text="Link in bio",
+            confidence=0.92,
+        )
+
+    def test_construction_with_defaults(self) -> None:
+        ft = self._minimal()
+        assert ft.video_id == VideoId(1)
+        assert ft.frame_id == 5
+        assert ft.text == "Link in bio"
+        assert ft.confidence == 0.92
+        assert ft.bbox is None
+        assert ft.id is None
+        assert ft.created_at is None
+
+    def test_full_round_trip_including_bbox(self) -> None:
+        now = UTC_NOW
+        ft = FrameText(
+            video_id=VideoId(2),
+            frame_id=10,
+            text="Promo code: SAVE20",
+            confidence=0.88,
+            bbox="[[0,0],[100,0],[100,20],[0,20]]",
+            id=42,
+            created_at=now,
+        )
+        assert ft.text == "Promo code: SAVE20"
+        assert ft.bbox == "[[0,0],[100,0],[100,20],[0,20]]"
+        assert ft.id == 42
+        assert ft.created_at == now
+
+    def test_is_frozen(self) -> None:
+        ft = self._minimal()
+        with pytest.raises(FrozenInstanceError):
+            ft.text = "mutated"  # type: ignore[misc]
+
+    def test_uses_slots(self) -> None:
+        ft = self._minimal()
+        assert not hasattr(ft, "__dict__")
+
+    def test_equality_by_fields(self) -> None:
+        a = FrameText(video_id=VideoId(1), frame_id=5, text="hello", confidence=0.9)
+        b = FrameText(video_id=VideoId(1), frame_id=5, text="hello", confidence=0.9)
+        assert a == b
+
+    def test_confidence_accepts_floats_outside_unit_interval(self) -> None:
+        # The dataclass does NOT validate the range — that's the adapter's job.
+        ft = FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=1.5)
+        assert ft.confidence == 1.5
+        ft2 = FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=-0.1)
+        assert ft2.confidence == -0.1

@@ -36,6 +36,7 @@ __all__ = [
     "Analysis",
     "Creator",
     "Frame",
+    "FrameText",
     "Hashtag",
     "Link",
     "Mention",
@@ -343,5 +344,40 @@ class Link:
     normalized_url: str
     source: str
     position_ms: int | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FrameText:
+    """A block of OCR-extracted text for a single frame (M008/R047).
+
+    Stored in the ``frame_texts`` side table keyed by ``(frame_id,
+    id)`` with FK cascade on both ``frames.id`` and ``videos.id``.
+    ``video_id`` is denormalised on the row (also present via
+    ``frames.video_id``) so the FTS5 ``frame_texts_fts`` virtual
+    table can filter by ``video_id`` without a JOIN — same pattern
+    as the existing ``search_index`` table.
+
+    ``confidence`` is the OCR engine's score in ``[0.0, 1.0]``;
+    rows below the engine's min_confidence threshold (default 0.5)
+    are discarded before insertion — the dataclass itself does not
+    validate the range (responsibility of the adapter — pattern
+    mirrors :class:`Hashtag` which does not canonicalise).
+
+    ``bbox`` is an optional JSON-serialised string of the 4 corner
+    points ``[[x1,y1], ..., [x4,y4]]`` from RapidOCR. Stored for
+    potential future visualisation; NOT exposed in CLI/MCP v1. The
+    dataclass holds it opaquely as ``str | None``.
+
+    ``id`` is ``None`` until the repository persists the row; the
+    repository returns a new instance with ``id`` populated.
+    """
+
+    video_id: VideoId
+    frame_id: int
+    text: str
+    confidence: float
+    bbox: str | None = None
     id: int | None = None
     created_at: datetime | None = None

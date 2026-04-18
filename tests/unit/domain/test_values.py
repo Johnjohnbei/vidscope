@@ -5,7 +5,10 @@ These tests must have no I/O and no third-party imports beyond pytest.
 
 from __future__ import annotations
 
+import re
+
 from vidscope.domain.values import (
+    ContentShape,
     CreatorId,
     Language,
     Platform,
@@ -32,6 +35,22 @@ class TestPlatform:
         assert names == {"INSTAGRAM", "TIKTOK", "YOUTUBE"}
 
 
+class TestContentShape:
+    def test_content_shape_exhaustive(self) -> None:
+        assert {s.value for s in ContentShape} == {
+            "talking_head",
+            "broll",
+            "mixed",
+            "unknown",
+        }
+
+    def test_content_shape_members_are_snake_case(self) -> None:
+        for shape in ContentShape:
+            assert re.match(r"^[a-z_]+$", shape.value), (
+                f"ContentShape.{shape.name} value {shape.value!r} is not snake_case"
+            )
+
+
 class TestStageName:
     def test_execution_order_is_declaration_order(self) -> None:
         order = list(StageName)
@@ -40,6 +59,7 @@ class TestStageName:
             StageName.TRANSCRIBE,
             StageName.FRAMES,
             StageName.ANALYZE,
+            StageName.VISUAL_INTELLIGENCE,
             StageName.METADATA_EXTRACT,
             StageName.INDEX,
         ]
@@ -47,6 +67,18 @@ class TestStageName:
     def test_string_values_match_names_lowercased(self) -> None:
         for stage in StageName:
             assert stage.value == stage.name.lower()
+
+    def test_stage_name_has_visual_intelligence(self) -> None:
+        assert StageName.VISUAL_INTELLIGENCE.value == "visual_intelligence"
+        assert [s.value for s in StageName] == [
+            "ingest",
+            "transcribe",
+            "frames",
+            "analyze",
+            "visual_intelligence",
+            "metadata_extract",
+            "index",
+        ]
 
 
 class TestRunStatus:
