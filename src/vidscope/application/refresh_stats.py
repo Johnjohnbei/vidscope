@@ -22,6 +22,8 @@ from vidscope.ports import Clock, PipelineContext, UnitOfWorkFactory
 
 __all__ = [
     "RefreshStatsBatchResult",
+    "RefreshStatsForWatchlistResult",
+    "RefreshStatsForWatchlistUseCase",
     "RefreshStatsResult",
     "RefreshStatsUseCase",
 ]
@@ -195,4 +197,113 @@ class RefreshStatsUseCase:
             refreshed=refreshed,
             failed=failed,
             per_video=tuple(per_video),
+        )
+
+
+# ---------------------------------------------------------------------------
+# S03 — RefreshStatsForWatchlistUseCase
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshStatsForWatchlistResult:
+    """Outcome of refresh-stats-for-watchlist (M009/S03).
+
+    Counts how many accounts were examined, how many videos received a
+    fresh stats probe, and how many failed. ``errors`` contains one entry
+    per account-level or video-level failure; the batch always runs to
+    completion regardless of individual failures (per-account + per-video
+    isolation, matching T-ISO-01 and T-ISO-02).
+    """
+
+    accounts_checked: int
+    videos_checked: int
+    stats_refreshed: int
+    failed: int
+    errors: tuple[str, ...]
+
+
+class RefreshStatsForWatchlistUseCase:
+    """Refresh video_stats for every video of every watched account.
+
+    For each WatchedAccount:
+    1. List its videos via ``uow.videos.list_by_author(platform, handle)``.
+    2. For each video, call ``refresh_stats.execute_one(video.id)``.
+
+    Per-account + per-video error isolation (T-ISO-01, T-ISO-02):
+    - A failed ``list_by_author`` for one account is recorded in ``errors``
+      and the next account is processed normally.
+    - A failed ``execute_one`` for one video increments ``failed`` and the
+      next video is processed normally.
+
+    The use case does NOT call ``RefreshWatchlistUseCase`` — orchestration
+    is the CLI's responsibility (M009/S03 design decision).
+
+    NO INFRASTRUCTURE IMPORT (import-linter application-has-no-adapters).
+    """
+
+    def __init__(
+        self,
+        *,
+        refresh_stats: RefreshStatsUseCase,
+        unit_of_work_factory: UnitOfWorkFactory,
+    ) -> None:
+        self._refresh = refresh_stats
+        self._uow = unit_of_work_factory
+
+    def execute(self) -> RefreshStatsForWatchlistResult:
+        """Iterate watched accounts and refresh stats for all their videos.
+
+        Opens one read-only UoW transaction to collect accounts + build
+        the work list, then calls ``execute_one`` outside the read scope
+        so each probe runs in its own transaction (one commit per video).
+        """
+        errors: list[str] = []
+        work: list[tuple[str, VideoId]] = []  # (label, video_id)
+        accounts_checked = 0
+
+        with self._uow() as uow:
+            accounts = uow.watch_accounts.list_all()
+            accounts_checked = len(accounts)
+            for account in accounts:
+                label_prefix = f"{account.platform.value}/{account.handle}"
+                try:
+                    videos = uow.videos.list_by_author(
+                        account.platform, account.handle, limit=1000
+                    )
+                except Exception as exc:  # noqa: BLE001 — per-account isolation (T-ISO-01)
+                    errors.append(f"list videos failed for {label_prefix}: {exc}")
+                    continue
+                for v in videos:
+                    if v.id is None:
+                        continue
+                    label = f"{label_prefix}#{int(v.id)}"
+                    work.append((label, v.id))
+
+        # Execute refresh per video OUTSIDE the read scope so each probe
+        # runs in its own transaction (avoids holding the DB lock).
+        videos_checked = 0
+        stats_refreshed = 0
+        failed = 0
+
+        for label, vid in work:
+            videos_checked += 1
+            try:
+                res = self._refresh.execute_one(vid)
+            except Exception as exc:  # noqa: BLE001 — per-video isolation (T-ISO-02)
+                failed += 1
+                errors.append(f"{label}: unexpected error: {exc}")
+                continue
+            if res.success:
+                stats_refreshed += 1
+            else:
+                failed += 1
+                errors.append(f"{label}: {res.message}")
+
+        return RefreshStatsForWatchlistResult(
+            accounts_checked=accounts_checked,
+            videos_checked=videos_checked,
+            stats_refreshed=stats_refreshed,
+            failed=failed,
+            errors=tuple(errors),
         )

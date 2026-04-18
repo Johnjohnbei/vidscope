@@ -95,6 +95,17 @@ class VideoRepository(Protocol):
         """Return the ``limit`` most recently ingested videos, newest first."""
         ...
 
+    def list_by_author(
+        self, platform: Platform, handle: str, *, limit: int = 1000
+    ) -> list[Video]:
+        """Return videos whose ``author`` matches ``handle`` on ``platform``.
+
+        Used by :class:`RefreshStatsForWatchlistUseCase` (M009/S03) to list
+        all known videos for a watched account without a creator_id FK.
+        Capped at ``limit`` (default 1000) to avoid unbounded scans.
+        """
+        ...
+
     def count(self) -> int:
         """Return the total number of videos in the store."""
         ...

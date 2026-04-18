@@ -25,6 +25,8 @@ from vidscope.application.get_status import GetStatusResult, GetStatusUseCase
 from vidscope.application.ingest_video import IngestResult, IngestVideoUseCase
 from vidscope.application.refresh_stats import (
     RefreshStatsBatchResult,
+    RefreshStatsForWatchlistResult,
+    RefreshStatsForWatchlistUseCase,
     RefreshStatsResult,
     RefreshStatsUseCase,
 )
@@ -59,6 +61,8 @@ __all__ = [
     "IngestResult",
     "IngestVideoUseCase",
     "RefreshStatsBatchResult",
+    "RefreshStatsForWatchlistResult",
+    "RefreshStatsForWatchlistUseCase",
     "RefreshStatsResult",
     "RefreshStatsUseCase",
     "ListVideosResult",

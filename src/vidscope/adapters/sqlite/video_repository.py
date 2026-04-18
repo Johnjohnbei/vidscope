@@ -121,6 +121,29 @@ class VideoRepositorySQLite:
         )
         return [_row_to_video(row) for row in rows]
 
+    def list_by_author(
+        self, platform: Platform, handle: str, *, limit: int = 1000
+    ) -> list[Video]:
+        """Return videos whose ``author`` column matches ``handle`` on ``platform``.
+
+        Used by M009/S03 RefreshStatsForWatchlistUseCase to list all known
+        videos for a watched account. Capped at ``limit`` rows (default 1000).
+        """
+        rows = (
+            self._conn.execute(
+                select(videos_table)
+                .where(
+                    videos_table.c.platform == platform.value,
+                    videos_table.c.author == handle,
+                )
+                .order_by(videos_table.c.created_at.desc())
+                .limit(limit)
+            )
+            .mappings()
+            .all()
+        )
+        return [_row_to_video(row) for row in rows]
+
     def count(self) -> int:
         total = self._conn.execute(
             select(func.count()).select_from(videos_table)

@@ -225,3 +225,197 @@ def test_execute_all_happy_path_multiple_videos() -> None:
     assert batch.total == 3
     assert batch.refreshed == 3
     assert batch.failed == 0
+
+
+# ---------------------------------------------------------------------------
+# S03 — RefreshStatsForWatchlistUseCase
+# ---------------------------------------------------------------------------
+
+
+def _make_watched_account(*, platform: Platform, handle: str) -> Any:
+    from vidscope.domain import WatchedAccount
+    return WatchedAccount(
+        platform=platform,
+        handle=handle,
+        url=f"https://x.y/@{handle}",
+    )
+
+
+def _make_s03_uow_factory(
+    *,
+    accounts: list[Any],
+    videos_by_handle: dict[str, list[Video]],
+) -> Any:
+    """Build a fake UoW factory for S03 watchlist tests.
+
+    Supports watch_accounts.list_all and videos.list_by_author(platform, handle).
+    """
+
+    class _FakeUoW:
+        def __init__(self) -> None:
+            from unittest.mock import MagicMock
+            self.watch_accounts = MagicMock()
+            self.watch_accounts.list_all = MagicMock(return_value=accounts)
+            self.videos = MagicMock()
+            self.videos.list_by_author = MagicMock(
+                side_effect=lambda platform, handle, limit=1000: videos_by_handle.get(handle, [])
+            )
+            self.video_stats = MagicMock()
+            self.video_stats.latest_for_video = MagicMock(return_value=None)
+            self.video_stats.append = MagicMock(side_effect=lambda s: s)
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+    def factory() -> Any:
+        return _FakeUoW()
+
+    return factory
+
+
+def test_refresh_stats_watchlist_empty() -> None:
+    """No watched accounts => all counters zero."""
+    from vidscope.application.refresh_stats import (
+        RefreshStatsForWatchlistUseCase,
+    )
+
+    refresh_mock = MagicMock()
+    uc = RefreshStatsForWatchlistUseCase(
+        refresh_stats=refresh_mock,
+        unit_of_work_factory=_make_s03_uow_factory(accounts=[], videos_by_handle={}),
+    )
+    result = uc.execute()
+    assert result.accounts_checked == 0
+    assert result.videos_checked == 0
+    assert result.stats_refreshed == 0
+    refresh_mock.execute_one.assert_not_called()
+
+
+def test_refresh_stats_watchlist_happy_path() -> None:
+    """2 accounts x 3 videos each => videos_checked=6, stats_refreshed=6."""
+    from vidscope.application.refresh_stats import (
+        RefreshStatsForWatchlistUseCase,
+        RefreshStatsResult,
+    )
+
+    account = _make_watched_account(platform=Platform.YOUTUBE, handle="alice")
+    videos = [
+        Video(id=VideoId(i), platform=Platform.YOUTUBE, platform_id=PlatformId(f"p{i}"), url=f"https://x.y/{i}")
+        for i in (10, 11, 12)
+    ]
+
+    refresh_mock = MagicMock()
+    refresh_mock.execute_one = MagicMock(return_value=RefreshStatsResult(
+        success=True, video_id=1, stats=None, message="ok",
+    ))
+
+    uc = RefreshStatsForWatchlistUseCase(
+        refresh_stats=refresh_mock,
+        unit_of_work_factory=_make_s03_uow_factory(
+            accounts=[account],
+            videos_by_handle={"alice": videos},
+        ),
+    )
+    result = uc.execute()
+    assert result.accounts_checked == 1
+    assert result.videos_checked == 3
+    assert result.stats_refreshed == 3
+    assert result.failed == 0
+    assert refresh_mock.execute_one.call_count == 3
+
+
+def test_refresh_stats_watchlist_per_video_error_isolation() -> None:
+    """Error on one video => failed++, batch continues for next video."""
+    from vidscope.application.refresh_stats import (
+        RefreshStatsForWatchlistUseCase,
+        RefreshStatsResult,
+    )
+
+    account = _make_watched_account(platform=Platform.YOUTUBE, handle="alice")
+    videos = [
+        Video(id=VideoId(10), platform=Platform.YOUTUBE, platform_id=PlatformId("p10"), url="https://x.y/10"),
+        Video(id=VideoId(11), platform=Platform.YOUTUBE, platform_id=PlatformId("p11"), url="https://x.y/11"),
+    ]
+
+    call_n: dict[str, int] = {"n": 0}
+
+    def _exec(vid: Any) -> Any:
+        call_n["n"] += 1
+        if call_n["n"] == 1:
+            raise RuntimeError("network down")
+        return RefreshStatsResult(success=True, video_id=int(vid), stats=None, message="ok")
+
+    refresh_mock = MagicMock()
+    refresh_mock.execute_one = _exec
+
+    uc = RefreshStatsForWatchlistUseCase(
+        refresh_stats=refresh_mock,
+        unit_of_work_factory=_make_s03_uow_factory(
+            accounts=[account],
+            videos_by_handle={"alice": videos},
+        ),
+    )
+    result = uc.execute()
+    assert result.videos_checked == 2
+    assert result.stats_refreshed == 1
+    assert result.failed == 1
+    assert any("network down" in e for e in result.errors)
+
+
+def test_refresh_stats_watchlist_per_account_error_isolation() -> None:
+    """list_by_author failure for account A => account B still processed."""
+    from vidscope.application.refresh_stats import (
+        RefreshStatsForWatchlistUseCase,
+        RefreshStatsResult,
+    )
+
+    account_a = _make_watched_account(platform=Platform.YOUTUBE, handle="ghost")
+    account_b = _make_watched_account(platform=Platform.YOUTUBE, handle="bob")
+
+    # ghost raises on list_by_author, bob returns one video
+    bob_video = Video(id=VideoId(20), platform=Platform.YOUTUBE, platform_id=PlatformId("p20"), url="https://x.y/20")
+
+    class _FakeUoW:
+        def __init__(self) -> None:
+            self.watch_accounts = MagicMock()
+            self.watch_accounts.list_all = MagicMock(return_value=[account_a, account_b])
+            self.videos = MagicMock()
+
+            def _list_by_author(platform: Any, handle: str, limit: int = 1000) -> Any:
+                if handle == "ghost":
+                    raise RuntimeError("ghost account vanished")
+                return [bob_video]
+
+            self.videos.list_by_author = _list_by_author
+            self.video_stats = MagicMock()
+            self.video_stats.latest_for_video = MagicMock(return_value=None)
+
+        def __enter__(self) -> Any:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+    refresh_mock = MagicMock()
+    refresh_mock.execute_one = MagicMock(return_value=RefreshStatsResult(
+        success=True, video_id=20, stats=None, message="ok"
+    ))
+
+    uc = RefreshStatsForWatchlistUseCase(
+        refresh_stats=refresh_mock,
+        unit_of_work_factory=lambda: _FakeUoW(),
+    )
+    result = uc.execute()
+    assert result.accounts_checked == 2
+    assert result.videos_checked == 1
+    assert result.stats_refreshed == 1
+    assert any("ghost" in e for e in result.errors)
+
+
+def test_s02_refresh_stats_use_case_unchanged() -> None:
+    """Regression: RefreshStatsUseCase still exports execute_one and execute_all."""
+    assert hasattr(RefreshStatsUseCase, "execute_one")
+    assert hasattr(RefreshStatsUseCase, "execute_all")

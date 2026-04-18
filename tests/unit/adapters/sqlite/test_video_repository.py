@@ -129,3 +129,53 @@ class TestDirectConnectionUsage:
                 Platform.YOUTUBE, PlatformId("direct")
             )
             assert found is not None
+
+
+class TestListByAuthor:
+    """Tests for VideoRepositorySQLite.list_by_author (M009/S03)."""
+
+    def test_returns_videos_matching_author_and_platform(
+        self, engine: Engine
+    ) -> None:
+        with SqliteUnitOfWork(engine) as uow:
+            uow.videos.add(
+                _sample_video(platform=Platform.YOUTUBE, platform_id=PlatformId("y1"), author="alice")
+            )
+            uow.videos.add(
+                _sample_video(platform=Platform.YOUTUBE, platform_id=PlatformId("y2"), author="alice")
+            )
+            uow.videos.add(
+                _sample_video(platform=Platform.YOUTUBE, platform_id=PlatformId("y3"), author="bob")
+            )
+            uow.videos.add(
+                _sample_video(platform=Platform.TIKTOK, platform_id=PlatformId("t1"), author="alice")
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            alice_yt = uow.videos.list_by_author(Platform.YOUTUBE, "alice")
+            assert len(alice_yt) == 2
+            assert all(v.author == "alice" for v in alice_yt)
+            assert all(v.platform is Platform.YOUTUBE for v in alice_yt)
+
+    def test_returns_empty_for_unknown_handle(self, engine: Engine) -> None:
+        with SqliteUnitOfWork(engine) as uow:
+            uow.videos.add(_sample_video(platform_id=PlatformId("x1"), author="alice"))
+
+        with SqliteUnitOfWork(engine) as uow:
+            result = uow.videos.list_by_author(Platform.YOUTUBE, "ghost")
+            assert result == []
+
+    def test_limit_caps_results(self, engine: Engine) -> None:
+        with SqliteUnitOfWork(engine) as uow:
+            for i in range(5):
+                uow.videos.add(
+                    _sample_video(
+                        platform=Platform.YOUTUBE,
+                        platform_id=PlatformId(f"lim{i}"),
+                        author="prolific",
+                    )
+                )
+
+        with SqliteUnitOfWork(engine) as uow:
+            result = uow.videos.list_by_author(Platform.YOUTUBE, "prolific", limit=3)
+            assert len(result) == 3
