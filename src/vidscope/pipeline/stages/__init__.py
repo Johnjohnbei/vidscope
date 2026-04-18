@@ -18,6 +18,7 @@ from vidscope.pipeline.stages.analyze import AnalyzeStage
 from vidscope.pipeline.stages.frames import FramesStage
 from vidscope.pipeline.stages.index import IndexStage
 from vidscope.pipeline.stages.ingest import IngestStage
+from vidscope.pipeline.stages.metadata_extract import MetadataExtractStage
 from vidscope.pipeline.stages.transcribe import TranscribeStage
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "FramesStage",
     "IndexStage",
     "IngestStage",
+    "MetadataExtractStage",
     "TranscribeStage",
 ]
