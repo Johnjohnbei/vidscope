@@ -24,6 +24,7 @@ from vidscope.cli.commands import (
     list_command,
     mcp_app,
     refresh_stats_command,
+    review_command,
     search_command,
     show_command,
     status_command,
@@ -110,3 +111,7 @@ app.command(
     "explain",
     help="Show reasoning and per-dimension scores of a video's latest analysis.",
 )(explain_command)
+app.command(
+    "review",
+    help="Set workflow overlay (status, starred, notes) on a video.",
+)(review_command)
