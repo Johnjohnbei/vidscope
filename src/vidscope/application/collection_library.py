@@ -24,10 +24,18 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class CollectionSummary:
-    """Row used by `vidscope collection list`."""
+    """Row used by `vidscope collection list`.
+
+    ``video_count`` is the exact count when fewer than 10 000 videos belong to
+    the collection.  When the collection contains 10 000 or more videos the
+    count is capped at 10 000 and ``is_count_capped`` is set to ``True`` so
+    callers can display an indicator (e.g. "10 000+") instead of a silently
+    wrong number.
+    """
 
     collection: Collection
     video_count: int
+    is_count_capped: bool = False
 
 
 class CreateCollectionUseCase:
@@ -90,6 +98,12 @@ class ListCollectionsUseCase:
             for c in cols:
                 if c.id is None:
                     continue
-                vids = uow.collections.list_videos(c.id, limit=10_000)
-                results.append(CollectionSummary(collection=c, video_count=len(vids)))
+                # Fetch one extra to detect whether the count is capped.
+                vids = uow.collections.list_videos(c.id, limit=10_001)
+                is_capped = len(vids) > 10_000
+                results.append(CollectionSummary(
+                    collection=c,
+                    video_count=min(len(vids), 10_000),
+                    is_count_capped=is_capped,
+                ))
             return results
