@@ -29,6 +29,7 @@ from vidscope.application.list_creator_videos import (
     ListCreatorVideosUseCase,
 )
 from vidscope.application.list_creators import ListCreatorsResult, ListCreatorsUseCase
+from vidscope.application.list_links import ListLinksResult, ListLinksUseCase
 from vidscope.application.list_videos import ListVideosResult, ListVideosUseCase
 from vidscope.application.search_library import (
     SearchLibraryResult,
@@ -65,6 +66,8 @@ __all__ = [
     "ListCreatorVideosUseCase",
     "ListCreatorsResult",
     "ListCreatorsUseCase",
+    "ListLinksResult",
+    "ListLinksUseCase",
     "ListVideosResult",
     "ListVideosUseCase",
     "ListWatchedAccountsUseCase",
