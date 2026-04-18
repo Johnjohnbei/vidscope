@@ -23,6 +23,11 @@ from __future__ import annotations
 
 from vidscope.application.get_status import GetStatusResult, GetStatusUseCase
 from vidscope.application.ingest_video import IngestResult, IngestVideoUseCase
+from vidscope.application.refresh_stats import (
+    RefreshStatsBatchResult,
+    RefreshStatsResult,
+    RefreshStatsUseCase,
+)
 from vidscope.application.list_videos import ListVideosResult, ListVideosUseCase
 from vidscope.application.search_library import (
     SearchLibraryResult,
@@ -53,6 +58,9 @@ __all__ = [
     "GetStatusUseCase",
     "IngestResult",
     "IngestVideoUseCase",
+    "RefreshStatsBatchResult",
+    "RefreshStatsResult",
+    "RefreshStatsUseCase",
     "ListVideosResult",
     "ListVideosUseCase",
     "ListWatchedAccountsUseCase",
