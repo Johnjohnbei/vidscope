@@ -11,7 +11,12 @@
 - ✅ **M003:** Account monitoring and scheduled refresh
 - ✅ **M004:** Pluggable LLM analyzers
 - ✅ **M005:** Cookies UX improvements
+- ✅ **M006:** Creator-as-first-class-entity
+- ✅ **M007:** Rich content metadata — descriptions, links, hashtags, mentions, music
+- ✅ **M008:** Visual intelligence on frames — OCR, thumbnail, content-shape
 - ✅ **M009:** Engagement signals + velocity tracking (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
+- 📋 **M010:** Multi-dimensional scoring + controlled taxonomy (roadmap ready)
+- 📋 **M011:** Veille workflow layer — tracking, tags, collections, exports (roadmap ready)
 
 ## Recent Decisions
 - **M009/S04:** views_velocity_24h unit is views/HOUR (D-04) — the function name is misleading; min_velocity comparisons are in views/hour not views/day
