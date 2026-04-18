@@ -223,6 +223,8 @@ def _video_to_row(video: Video) -> dict[str, Any]:
         "description": video.description,
         "music_track": video.music_track,
         "music_artist": video.music_artist,
+        "thumbnail_key": video.thumbnail_key,
+        "content_shape": video.content_shape,
     }
 
 
