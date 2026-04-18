@@ -15,7 +15,7 @@ from rich.table import Table
 
 from vidscope.application.search_library import SearchLibraryResult, SearchLibraryUseCase
 from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
-from vidscope.cli._support import acquire_container, console, handle_domain_errors
+from vidscope.cli._support import acquire_container, console, handle_domain_errors, parse_tracking_status
 from vidscope.domain import ContentType, TrackingStatus
 
 __all__ = ["search_command"]
@@ -44,18 +44,6 @@ def _parse_content_type(raw: str | None) -> ContentType | None:
             f"--content-type must be one of: {valid}. Got {raw!r}."
         ) from exc
 
-
-def _parse_tracking_status(raw: str | None) -> TrackingStatus | None:
-    if raw is None:
-        return None
-    norm = raw.strip().lower()
-    try:
-        return TrackingStatus(norm)
-    except ValueError as exc:
-        valid = ", ".join(s.value for s in TrackingStatus)
-        raise typer.BadParameter(
-            f"--status must be one of: {valid}. Got {raw!r}."
-        ) from exc
 
 
 def search_command(
@@ -87,7 +75,7 @@ def search_command(
     with handle_domain_errors():
         parsed_ct = _parse_content_type(content_type)
         parsed_sp = _parse_sponsored(sponsored)
-        parsed_status = _parse_tracking_status(status)
+        parsed_status = parse_tracking_status(status)
 
         filters = SearchFilters(
             content_type=parsed_ct,

@@ -31,7 +31,6 @@ class CsvExporter:
         out: Path | None = None,
     ) -> None:
         if not records:
-            # Even empty export writes nothing (caller may expect it)
             if out is None:
                 return
             out.write_text("", encoding="utf-8")

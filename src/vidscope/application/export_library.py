@@ -16,14 +16,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 from vidscope.application.search_videos import SearchFilters
 from vidscope.domain import Collection, Tag, TrackingStatus, VideoId
 from vidscope.ports import Exporter, UnitOfWorkFactory
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = ["ExportLibraryUseCase", "ExportRecord"]
 

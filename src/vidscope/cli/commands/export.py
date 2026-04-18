@@ -19,6 +19,7 @@ from vidscope.cli._support import (
     console,
     fail_user,
     handle_domain_errors,
+    parse_tracking_status,
 )
 from vidscope.domain import TrackingStatus
 
@@ -46,17 +47,6 @@ def _validate_out_path(raw: str | None) -> Path | None:
         raise typer.Exit(1)
     return candidate
 
-
-def _parse_tracking_status(raw: str | None) -> TrackingStatus | None:
-    if raw is None:
-        return None
-    try:
-        return TrackingStatus(raw.strip().lower())
-    except ValueError as exc:
-        valid = ", ".join(s.value for s in TrackingStatus)
-        raise typer.BadParameter(
-            f"--status must be one of: {valid}. Got {raw!r}."
-        ) from exc
 
 
 def export_command(
@@ -114,7 +104,7 @@ def export_command(
 
         out_path = _validate_out_path(out)
 
-        parsed_status = _parse_tracking_status(status)
+        parsed_status = parse_tracking_status(status)
 
         filters = SearchFilters(
             status=parsed_status,

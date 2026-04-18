@@ -14,7 +14,7 @@ from contextlib import contextmanager
 import typer
 from rich.console import Console
 
-from vidscope.domain import DomainError
+from vidscope.domain import DomainError, TrackingStatus
 from vidscope.infrastructure.container import Container, build_container
 
 __all__ = [
@@ -23,6 +23,7 @@ __all__ = [
     "fail_system",
     "fail_user",
     "handle_domain_errors",
+    "parse_tracking_status",
 ]
 
 
@@ -77,3 +78,15 @@ def handle_domain_errors() -> Iterator[None]:
         yield
     except DomainError as exc:
         raise fail_user(str(exc)) from exc
+
+
+def parse_tracking_status(raw: str | None) -> TrackingStatus | None:
+    if raw is None:
+        return None
+    try:
+        return TrackingStatus(raw.strip().lower())
+    except ValueError as exc:
+        valid = ", ".join(s.value for s in TrackingStatus)
+        raise typer.BadParameter(
+            f"--status must be one of: {valid}. Got {raw!r}."
+        ) from exc
