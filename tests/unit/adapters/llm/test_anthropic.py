@@ -314,3 +314,93 @@ class TestAnalyzeErrors:
         analyzer = AnthropicAnalyzer(api_key="sk-ant-x", client=_client(handler))
         with pytest.raises(AnalysisError, match="non-JSON"):
             analyzer.analyze(_transcript())
+
+
+# ---------------------------------------------------------------------------
+# M010 — extended JSON fields via MockTransport (Anthropic native format)
+# ---------------------------------------------------------------------------
+
+
+class TestM010ExtendedAnthropicJson:
+    """M010: anthropic must surface new fields via make_analysis."""
+
+    def _transcript(self) -> Transcript:
+        return Transcript(
+            video_id=VideoId(1),
+            language=Language.ENGLISH,
+            full_text="hello",
+            segments=(),
+        )
+
+    def _mock_anthropic_response(self, payload: dict[str, Any]) -> httpx.Response:
+        return httpx.Response(200, json={
+            "content": [{"type": "text", "text": json.dumps(payload)}]
+        })
+
+    def test_happy_path_all_m010_fields(self) -> None:
+        from vidscope.domain import ContentType, SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["code"],
+            "topics": ["code"],
+            "verticals": ["tech"],
+            "score": 80,
+            "information_density": 65,
+            "actionability": 85,
+            "novelty": 50,
+            "production_quality": 70,
+            "sentiment": "positive",
+            "is_sponsored": False,
+            "content_type": "tutorial",
+            "reasoning": "Structured technical tutorial.",
+            "summary": "A tutorial",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_anthropic_response(payload)
+        analyzer = AnthropicAnalyzer(api_key="sk-ant-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.verticals == ("tech",)
+        assert result.information_density == 65.0
+        assert result.sentiment is SentimentLabel.POSITIVE
+        assert result.content_type is ContentType.TUTORIAL
+        assert result.reasoning is not None
+
+    def test_partial_m010_fields(self) -> None:
+        from vidscope.domain import SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["a"],
+            "topics": [],
+            "score": 50,
+            "summary": "x",
+            "sentiment": "negative",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_anthropic_response(payload)
+        analyzer = AnthropicAnalyzer(api_key="sk-ant-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is SentimentLabel.NEGATIVE
+        assert result.content_type is None
+        assert result.reasoning is None
+        assert result.verticals == ()
+
+    def test_invalid_m010_values_safe(self) -> None:
+        payload = {
+            "language": "en",
+            "keywords": [],
+            "topics": [],
+            "score": 50,
+            "summary": "x",
+            "sentiment": "thrilled",
+            "content_type": "podcast",
+            "is_sponsored": "maybe",
+            "production_quality": "great",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_anthropic_response(payload)
+        analyzer = AnthropicAnalyzer(api_key="sk-ant-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is None
+        assert result.content_type is None
+        assert result.is_sponsored is None
+        assert result.production_quality is None

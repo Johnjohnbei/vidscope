@@ -159,3 +159,95 @@ class TestAnalyzeErrors:
         analyzer = OpenAIAnalyzer(api_key="sk-x", client=_client(handler))
         analyzer.analyze(_transcript())
         assert len(calls) == 3
+
+
+# ---------------------------------------------------------------------------
+# M010 — extended JSON fields via MockTransport
+# ---------------------------------------------------------------------------
+
+
+class TestM010ExtendedOpenAIJson:
+    """M010: openai must surface new fields via make_analysis."""
+
+    def _transcript(self) -> Transcript:
+        return Transcript(
+            video_id=VideoId(1),
+            language=Language.ENGLISH,
+            full_text="hello",
+            segments=(),
+        )
+
+    def _mock_openai_response(self, payload: dict[str, Any]) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": json.dumps(payload)}}]
+        })
+
+    def test_happy_path_all_m010_fields(self) -> None:
+        from vidscope.domain import ContentType, SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["garden", "tips"],
+            "topics": ["gardening"],
+            "verticals": ["education", "fitness"],
+            "score": 80,
+            "information_density": 72,
+            "actionability": 88,
+            "novelty": 45,
+            "production_quality": 68,
+            "sentiment": "positive",
+            "is_sponsored": False,
+            "content_type": "tutorial",
+            "reasoning": "Step-by-step gardening tutorial with actionable tips.",
+            "summary": "Gardening tips tutorial",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = OpenAIAnalyzer(api_key="sk-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.verticals == ("education", "fitness")
+        assert result.information_density == 72.0
+        assert result.sentiment is SentimentLabel.POSITIVE
+        assert result.content_type is ContentType.TUTORIAL
+        assert result.reasoning is not None
+
+    def test_partial_m010_fields(self) -> None:
+        from vidscope.domain import SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["a"],
+            "topics": ["a"],
+            "score": 50,
+            "summary": "ok",
+            "sentiment": "mixed",
+            "is_sponsored": False,
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = OpenAIAnalyzer(api_key="sk-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is SentimentLabel.MIXED
+        assert result.is_sponsored is False
+        assert result.content_type is None
+        assert result.information_density is None
+        assert result.verticals == ()
+
+    def test_invalid_m010_values_safe(self) -> None:
+        payload = {
+            "language": "en",
+            "keywords": [],
+            "topics": [],
+            "score": 50,
+            "summary": "x",
+            "sentiment": "ambivalent",
+            "content_type": "infomercial",
+            "is_sponsored": 99,
+            "novelty": "fresh",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = OpenAIAnalyzer(api_key="sk-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is None
+        assert result.content_type is None
+        assert result.is_sponsored is None
+        assert result.novelty is None

@@ -302,3 +302,106 @@ class TestAnalyzeErrors:
 
         assert result.score == 60.0
         assert len(calls) == 2
+
+
+# ---------------------------------------------------------------------------
+# M010 — extended JSON fields via MockTransport
+# ---------------------------------------------------------------------------
+
+
+class TestM010ExtendedGroqJson:
+    """M010: groq must surface new fields via make_analysis."""
+
+    def _transcript(self) -> Transcript:
+        return Transcript(
+            video_id=VideoId(1),
+            language=Language.ENGLISH,
+            full_text="hello",
+            segments=(),
+        )
+
+    def _mock_openai_response(self, payload: dict[str, Any]) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": json.dumps(payload)}}]
+        })
+
+    def test_happy_path_all_m010_fields(self) -> None:
+        from vidscope.domain import ContentType, SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["code", "python"],
+            "topics": ["code"],
+            "verticals": ["tech", "ai"],
+            "score": 75,
+            "information_density": 70,
+            "actionability": 80,
+            "novelty": 40,
+            "production_quality": 60,
+            "sentiment": "positive",
+            "is_sponsored": False,
+            "content_type": "tutorial",
+            "reasoning": "Clear Python tutorial with step-by-step instructions.",
+            "summary": "A tutorial about Python",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        client = _client(handler)
+        analyzer = GroqAnalyzer(api_key="test-key", client=client)
+        result = analyzer.analyze(self._transcript())
+        assert result.verticals == ("tech", "ai")
+        assert result.information_density == 70.0
+        assert result.actionability == 80.0
+        assert result.novelty == 40.0
+        assert result.production_quality == 60.0
+        assert result.sentiment is SentimentLabel.POSITIVE
+        assert result.is_sponsored is False
+        assert result.content_type is ContentType.TUTORIAL
+        assert result.reasoning is not None and "Python" in result.reasoning
+
+    def test_partial_m010_fields(self) -> None:
+        """Missing fields → None, not exception (defensive)."""
+        from vidscope.domain import ContentType, SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["a"],
+            "topics": ["a"],
+            "score": 50,
+            "summary": "ok",
+            "sentiment": "neutral",
+            "content_type": "vlog",
+            "is_sponsored": True,
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        client = _client(handler)
+        analyzer = GroqAnalyzer(api_key="test-key", client=client)
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is SentimentLabel.NEUTRAL
+        assert result.content_type is ContentType.VLOG
+        assert result.is_sponsored is True
+        assert result.information_density is None
+        assert result.verticals == ()
+        assert result.reasoning is None
+
+    def test_invalid_m010_values_safe(self) -> None:
+        """Unknown enum values → None, not exception."""
+        payload = {
+            "language": "en",
+            "keywords": [],
+            "topics": [],
+            "score": 50,
+            "summary": "x",
+            "sentiment": "joyful",
+            "content_type": "podcast",
+            "is_sponsored": "maybe",
+            "information_density": "very high",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        client = _client(handler)
+        analyzer = GroqAnalyzer(api_key="test-key", client=client)
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is None
+        assert result.content_type is None
+        assert result.is_sponsored is None
+        assert result.information_density is None

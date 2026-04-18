@@ -165,3 +165,95 @@ class TestAnalyzeErrors:
         analyzer = OpenRouterAnalyzer(api_key="sk-or-x", client=_client(handler))
         with pytest.raises(AnalysisError, match="parseable"):
             analyzer.analyze(_transcript())
+
+
+# ---------------------------------------------------------------------------
+# M010 — extended JSON fields via MockTransport
+# ---------------------------------------------------------------------------
+
+
+class TestM010ExtendedOpenRouterJson:
+    """M010: openrouter must surface new fields via make_analysis."""
+
+    def _transcript(self) -> Transcript:
+        return Transcript(
+            video_id=VideoId(1),
+            language=Language.ENGLISH,
+            full_text="hello",
+            segments=(),
+        )
+
+    def _mock_openai_response(self, payload: dict[str, Any]) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": json.dumps(payload)}}]
+        })
+
+    def test_happy_path_all_m010_fields(self) -> None:
+        from vidscope.domain import ContentType, SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["cooking", "pasta"],
+            "topics": ["italian food"],
+            "verticals": ["food", "travel"],
+            "score": 65,
+            "information_density": 55,
+            "actionability": 70,
+            "novelty": 35,
+            "production_quality": 65,
+            "sentiment": "positive",
+            "is_sponsored": False,
+            "content_type": "vlog",
+            "reasoning": "Food vlog with positive tone about cooking.",
+            "summary": "Cooking pasta tutorial",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = OpenRouterAnalyzer(api_key="sk-or-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.verticals == ("food", "travel")
+        assert result.information_density == 55.0
+        assert result.sentiment is SentimentLabel.POSITIVE
+        assert result.content_type is ContentType.VLOG
+        assert result.reasoning is not None
+
+    def test_partial_m010_fields(self) -> None:
+        from vidscope.domain import ContentType
+        payload = {
+            "language": "en",
+            "keywords": ["a"],
+            "topics": ["a"],
+            "score": 50,
+            "summary": "ok",
+            "content_type": "review",
+            "is_sponsored": True,
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = OpenRouterAnalyzer(api_key="sk-or-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.content_type is ContentType.REVIEW
+        assert result.is_sponsored is True
+        assert result.sentiment is None
+        assert result.information_density is None
+        assert result.verticals == ()
+
+    def test_invalid_m010_values_safe(self) -> None:
+        payload = {
+            "language": "en",
+            "keywords": [],
+            "topics": [],
+            "score": 50,
+            "summary": "x",
+            "sentiment": "happy",
+            "content_type": "webinar",
+            "is_sponsored": "not sure",
+            "actionability": "low",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = OpenRouterAnalyzer(api_key="sk-or-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is None
+        assert result.content_type is None
+        assert result.is_sponsored is None
+        assert result.actionability is None

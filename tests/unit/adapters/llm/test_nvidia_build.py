@@ -155,3 +155,93 @@ class TestAnalyzeErrors:
         analyzer = NvidiaBuildAnalyzer(api_key="nvapi-x", client=_client(handler))
         with pytest.raises(AnalysisError, match="choices"):
             analyzer.analyze(_transcript())
+
+
+# ---------------------------------------------------------------------------
+# M010 — extended JSON fields via MockTransport
+# ---------------------------------------------------------------------------
+
+
+class TestM010ExtendedNvidiaJson:
+    """M010: nvidia_build must surface new fields via make_analysis."""
+
+    def _transcript(self) -> Transcript:
+        return Transcript(
+            video_id=VideoId(1),
+            language=Language.ENGLISH,
+            full_text="hello",
+            segments=(),
+        )
+
+    def _mock_openai_response(self, payload: dict[str, Any]) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": json.dumps(payload)}}]
+        })
+
+    def test_happy_path_all_m010_fields(self) -> None:
+        from vidscope.domain import ContentType, SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["ml", "neural"],
+            "topics": ["machine learning"],
+            "verticals": ["tech", "ai"],
+            "score": 70,
+            "information_density": 65,
+            "actionability": 75,
+            "novelty": 55,
+            "production_quality": 60,
+            "sentiment": "positive",
+            "is_sponsored": False,
+            "content_type": "educational",
+            "reasoning": "Educational ML content with clear structure.",
+            "summary": "An ML tutorial",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = NvidiaBuildAnalyzer(api_key="nvapi-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.verticals == ("tech", "ai")
+        assert result.information_density == 65.0
+        assert result.sentiment is SentimentLabel.POSITIVE
+        assert result.content_type is ContentType.EDUCATIONAL
+        assert result.reasoning is not None
+
+    def test_partial_m010_fields(self) -> None:
+        from vidscope.domain import SentimentLabel
+        payload = {
+            "language": "en",
+            "keywords": ["a"],
+            "topics": ["a"],
+            "score": 50,
+            "summary": "ok",
+            "sentiment": "neutral",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = NvidiaBuildAnalyzer(api_key="nvapi-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is SentimentLabel.NEUTRAL
+        assert result.content_type is None
+        assert result.information_density is None
+        assert result.verticals == ()
+
+    def test_invalid_m010_values_safe(self) -> None:
+        payload = {
+            "language": "en",
+            "keywords": [],
+            "topics": [],
+            "score": 50,
+            "summary": "x",
+            "sentiment": "ecstatic",
+            "content_type": "documentary",
+            "is_sponsored": "uncertain",
+            "information_density": "high",
+        }
+        def handler(req: httpx.Request) -> httpx.Response:
+            return self._mock_openai_response(payload)
+        analyzer = NvidiaBuildAnalyzer(api_key="nvapi-test", client=_client(handler))
+        result = analyzer.analyze(self._transcript())
+        assert result.sentiment is None
+        assert result.content_type is None
+        assert result.is_sponsored is None
+        assert result.information_density is None
