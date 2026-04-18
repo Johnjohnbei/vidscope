@@ -14,6 +14,8 @@ from vidscope.domain.entities import (
     Analysis,
     Creator,
     Frame,
+    Hashtag,
+    Mention,
     PipelineRun,
     Transcript,
     TranscriptSegment,
@@ -313,3 +315,105 @@ class TestCreator:
         assert c.id == 7
         assert c.follower_count == 100_000
         assert c.is_verified is True
+
+
+class TestVideoMetadataColumns:
+    """M007 D-01: description, music_track, music_artist on Video."""
+
+    def _minimal(self) -> Video:
+        return Video(
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId("abc"),
+            url="https://youtube.com/watch?v=abc",
+        )
+
+    def test_metadata_defaults_are_none(self) -> None:
+        v = self._minimal()
+        assert v.description is None
+        assert v.music_track is None
+        assert v.music_artist is None
+
+    def test_metadata_round_trip(self) -> None:
+        v = Video(
+            platform=Platform.TIKTOK,
+            platform_id=PlatformId("t123"),
+            url="https://tiktok.com/@x/video/t123",
+            description="#Cooking at home @alice https://shop.com",
+            music_track="Original sound",
+            music_artist="@creator",
+        )
+        assert v.description == "#Cooking at home @alice https://shop.com"
+        assert v.music_track == "Original sound"
+        assert v.music_artist == "@creator"
+
+    def test_description_is_frozen(self) -> None:
+        v = self._minimal()
+        with pytest.raises(FrozenInstanceError):
+            v.description = "mutate"  # type: ignore[misc]
+
+
+class TestHashtag:
+    def _minimal(self) -> Hashtag:
+        return Hashtag(video_id=VideoId(1), tag="coding")
+
+    def test_minimal_hashtag_has_defaults(self) -> None:
+        h = self._minimal()
+        assert h.video_id == VideoId(1)
+        assert h.tag == "coding"
+        assert h.id is None
+        assert h.created_at is None
+
+    def test_hashtag_preserves_caller_value_verbatim(self) -> None:
+        # Canonicalisation (lowercase + strip #) is the adapter's job;
+        # the dataclass stores what the caller passed.
+        h = Hashtag(video_id=VideoId(1), tag="#Coding")
+        assert h.tag == "#Coding"
+
+    def test_hashtag_is_frozen(self) -> None:
+        h = self._minimal()
+        with pytest.raises(FrozenInstanceError):
+            h.tag = "other"  # type: ignore[misc]
+
+    def test_hashtag_uses_slots(self) -> None:
+        h = self._minimal()
+        assert not hasattr(h, "__dict__")
+
+    def test_hashtag_equality_by_fields(self) -> None:
+        a = Hashtag(video_id=VideoId(1), tag="coding")
+        b = Hashtag(video_id=VideoId(1), tag="coding")
+        assert a == b
+
+
+class TestMention:
+    def _minimal(self) -> Mention:
+        return Mention(video_id=VideoId(1), handle="alice")
+
+    def test_minimal_mention_has_defaults(self) -> None:
+        m = self._minimal()
+        assert m.video_id == VideoId(1)
+        assert m.handle == "alice"
+        assert m.platform is None
+        assert m.id is None
+        assert m.created_at is None
+
+    def test_mention_accepts_optional_platform(self) -> None:
+        m = Mention(
+            video_id=VideoId(1),
+            handle="alice",
+            platform=Platform.TIKTOK,
+        )
+        assert m.platform is Platform.TIKTOK
+
+    def test_mention_is_frozen(self) -> None:
+        m = self._minimal()
+        with pytest.raises(FrozenInstanceError):
+            m.handle = "other"  # type: ignore[misc]
+
+    def test_mention_uses_slots(self) -> None:
+        m = self._minimal()
+        assert not hasattr(m, "__dict__")
+
+    def test_mention_equality_by_fields(self) -> None:
+        a = Mention(video_id=VideoId(1), handle="alice", platform=Platform.TIKTOK)
+        b = Mention(video_id=VideoId(1), handle="alice", platform=Platform.TIKTOK)
+        assert a == b
