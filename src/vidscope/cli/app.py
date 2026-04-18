@@ -18,6 +18,7 @@ from rich.console import Console
 from vidscope import __version__
 from vidscope.cli.commands import (
     add_command,
+    collection_app,
     cookies_app,
     doctor_command,
     explain_command,
@@ -29,6 +30,7 @@ from vidscope.cli.commands import (
     show_command,
     status_command,
     suggest_command,
+    tag_app,
     trending_command,
     watch_app,
 )
@@ -115,3 +117,5 @@ app.command(
     "review",
     help="Set workflow overlay (status, starred, notes) on a video.",
 )(review_command)
+app.add_typer(tag_app, name="tag")
+app.add_typer(collection_app, name="collection")
