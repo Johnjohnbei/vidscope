@@ -34,6 +34,7 @@ from pathlib import Path
 from vidscope.domain import (
     Creator,
     IngestError,
+    Mention,
     Platform,
     PlatformUserId,
     StageName,
@@ -156,6 +157,8 @@ class IngestStage:
 
             # 4. Build the domain Video entity with every piece of
             #    metadata the downloader gave us plus the storage key.
+            #    M007 D-01: description, music_track, music_artist are
+            #    direct columns on the ``videos`` table.
             video = Video(
                 platform=outcome.platform,
                 platform_id=outcome.platform_id,
@@ -166,6 +169,9 @@ class IngestStage:
                 upload_date=outcome.upload_date,
                 view_count=outcome.view_count,
                 media_key=stored_key,
+                description=outcome.description,
+                music_track=outcome.music_track,
+                music_artist=outcome.music_artist,
             )
 
             # 5. Upsert creator (D-01) BEFORE video (D-04 transaction
@@ -188,7 +194,27 @@ class IngestStage:
             #    creator_id are set atomically in the same SQL statement.
             persisted = uow.videos.upsert_by_platform_id(video, creator=creator)
 
-            # 6. Mutate the pipeline context so downstream stages
+            # 6b. M007 D-05: persist hashtags and mentions in side
+            # tables. replace_for_video uses DELETE-then-INSERT so
+            # re-ingesting a video whose caption/hashtags changed
+            # replaces the old rows cleanly (idempotent).
+            assert persisted.id is not None
+            uow.hashtags.replace_for_video(
+                persisted.id, list(outcome.hashtags)
+            )
+            # Mentions from the downloader carry video_id=VideoId(0) as
+            # a placeholder. Re-instantiate each with the persisted id.
+            rebound_mentions = [
+                Mention(
+                    video_id=persisted.id,
+                    handle=m.handle,
+                    platform=m.platform,
+                )
+                for m in outcome.mentions
+            ]
+            uow.mentions.replace_for_video(persisted.id, rebound_mentions)
+
+            # 7. Mutate the pipeline context so downstream stages
             #    (transcribe, frames, analyze) can read what we
             #    produced.
             ctx.video_id = persisted.id

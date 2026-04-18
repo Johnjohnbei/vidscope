@@ -752,3 +752,254 @@ class TestCreatorWiring:
         assert creator.follower_count == 12345
         assert creator.is_orphan is False
         assert creator.id is None
+
+
+# ---------------------------------------------------------------------------
+# M007/S03-P01 T03 — description/music columns + hashtags/mentions side tables
+# ---------------------------------------------------------------------------
+
+
+class TestM007MetadataPersistence:
+    """IngestStage persists M007 fields (description, music, hashtags,
+    mentions) via the real SqliteUnitOfWork.
+
+    Tests exercise the full wiring without mocking internal repos —
+    we use SqliteUnitOfWork against an in-memory SQLite DB so we can
+    assert on what was actually written to the database.
+    """
+
+    def test_description_and_music_persisted_on_video_row(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """D-01: description, music_track, music_artist are stored as
+        direct columns on the ``videos`` table."""
+
+        def outcome_factory(destination_dir: str) -> IngestOutcome:
+            dest = Path(destination_dir) / "m007.mp4"
+            dest.write_bytes(b"fake")
+            return IngestOutcome(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("m007"),
+                url="https://www.youtube.com/watch?v=m007",
+                media_path=str(dest),
+                title="M007 video",
+                author="Channel",
+                duration=10.0,
+                description="A caption with #cooking",
+                music_track="Song title",
+                music_artist="Artist name",
+            )
+
+        stage = IngestStage(
+            downloader=FakeDownloader(outcome_factory=outcome_factory),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(source_url="https://www.youtube.com/watch?v=m007")
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            video = uow.videos.get(ctx.video_id)  # type: ignore[arg-type]
+            assert video is not None
+            assert video.description == "A caption with #cooking"
+            assert video.music_track == "Song title"
+            assert video.music_artist == "Artist name"
+
+    def test_hashtags_persisted_in_side_table(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """D-05: hashtags land in the ``hashtags`` side table."""
+        def outcome_factory(destination_dir: str) -> IngestOutcome:
+            dest = Path(destination_dir) / "ht.mp4"
+            dest.write_bytes(b"fake")
+            return IngestOutcome(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("ht"),
+                url="https://www.youtube.com/watch?v=ht",
+                media_path=str(dest),
+                hashtags=("coding", "tutorial"),
+            )
+
+        stage = IngestStage(
+            downloader=FakeDownloader(outcome_factory=outcome_factory),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(source_url="https://www.youtube.com/watch?v=ht")
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            hashtags = uow.hashtags.list_for_video(ctx.video_id)  # type: ignore[arg-type]
+            tags = {h.tag for h in hashtags}
+            # Repository canonicalises lowercase + lstrip '#'
+            assert "coding" in tags
+            assert "tutorial" in tags
+
+    def test_mentions_persisted_in_side_table_with_real_video_id(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """D-05: mentions land in ``mentions`` side table with the
+        persisted video_id (not the VideoId(0) placeholder)."""
+        from vidscope.domain import Mention, VideoId
+
+        def outcome_factory(destination_dir: str) -> IngestOutcome:
+            dest = Path(destination_dir) / "mn.mp4"
+            dest.write_bytes(b"fake")
+            return IngestOutcome(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("mn"),
+                url="https://www.youtube.com/watch?v=mn",
+                media_path=str(dest),
+                mentions=(
+                    Mention(video_id=VideoId(0), handle="alice", platform=None),
+                    Mention(video_id=VideoId(0), handle="bob", platform=None),
+                ),
+            )
+
+        stage = IngestStage(
+            downloader=FakeDownloader(outcome_factory=outcome_factory),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(source_url="https://www.youtube.com/watch?v=mn")
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        # Verify mentions were written with the real video_id
+        assert ctx.video_id is not None
+        with SqliteUnitOfWork(engine) as uow:
+            mentions = uow.mentions.list_for_video(ctx.video_id)  # type: ignore[arg-type]
+            assert len(mentions) == 2
+            handles = {m.handle.lower() for m in mentions}
+            assert handles == {"alice", "bob"}
+            # All mentions should reference the real persisted video_id
+            for m in mentions:
+                assert m.video_id == ctx.video_id
+
+    def test_empty_hashtags_and_mentions_still_cleans_previous_data(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """Re-ingest with empty hashtags/mentions replaces (deletes) old
+        rows — idempotent DELETE-INSERT per D-05."""
+        from vidscope.domain import Mention, VideoId
+
+        # First ingest: write hashtags and mentions
+        def factory_with_data(destination_dir: str) -> IngestOutcome:
+            dest = Path(destination_dir) / "idem.mp4"
+            dest.write_bytes(b"fake")
+            return IngestOutcome(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("idem"),
+                url="https://www.youtube.com/watch?v=idem",
+                media_path=str(dest),
+                hashtags=("cooking",),
+                mentions=(
+                    Mention(video_id=VideoId(0), handle="alice", platform=None),
+                ),
+            )
+
+        stage1 = IngestStage(
+            downloader=FakeDownloader(outcome_factory=factory_with_data),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx1 = PipelineContext(source_url="https://www.youtube.com/watch?v=idem")
+        with SqliteUnitOfWork(engine) as uow:
+            stage1.execute(ctx1, uow)
+
+        # Second ingest: no hashtags/mentions
+        def factory_no_data(destination_dir: str) -> IngestOutcome:
+            dest = Path(destination_dir) / "idem.mp4"
+            dest.write_bytes(b"fake")
+            return IngestOutcome(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("idem"),
+                url="https://www.youtube.com/watch?v=idem",
+                media_path=str(dest),
+                hashtags=(),
+                mentions=(),
+            )
+
+        stage2 = IngestStage(
+            downloader=FakeDownloader(outcome_factory=factory_no_data),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx2 = PipelineContext(source_url="https://www.youtube.com/watch?v=idem")
+        with SqliteUnitOfWork(engine) as uow:
+            stage2.execute(ctx2, uow)
+
+        # Old rows should be gone
+        with SqliteUnitOfWork(engine) as uow:
+            hashtags = uow.hashtags.list_for_video(ctx1.video_id)  # type: ignore[arg-type]
+            mentions = uow.mentions.list_for_video(ctx1.video_id)  # type: ignore[arg-type]
+            assert hashtags == []
+            assert mentions == []
+
+    def test_upsert_order_is_video_hashtags_mentions_in_one_transaction(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """All writes (video upsert + hashtags + mentions) happen in a
+        single UoW transaction — verified by checking all data is
+        present after a single ``with SqliteUnitOfWork`` block."""
+        from vidscope.domain import Mention, VideoId
+
+        def outcome_factory(destination_dir: str) -> IngestOutcome:
+            dest = Path(destination_dir) / "txn.mp4"
+            dest.write_bytes(b"fake")
+            return IngestOutcome(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("txn"),
+                url="https://www.youtube.com/watch?v=txn",
+                media_path=str(dest),
+                description="caption",
+                hashtags=("cooking", "tutorial"),
+                mentions=(
+                    Mention(video_id=VideoId(0), handle="alice", platform=None),
+                ),
+                music_track="Song",
+                music_artist="Artist",
+            )
+
+        stage = IngestStage(
+            downloader=FakeDownloader(outcome_factory=outcome_factory),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(source_url="https://www.youtube.com/watch?v=txn")
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        assert ctx.video_id is not None
+        with SqliteUnitOfWork(engine) as uow:
+            video = uow.videos.get(ctx.video_id)  # type: ignore[arg-type]
+            hashtags = uow.hashtags.list_for_video(ctx.video_id)  # type: ignore[arg-type]
+            mentions = uow.mentions.list_for_video(ctx.video_id)  # type: ignore[arg-type]
+
+            # Video row
+            assert video is not None
+            assert video.description == "caption"
+            assert video.music_track == "Song"
+            assert video.music_artist == "Artist"
+
+            # Side tables both populated
+            assert len(hashtags) == 2
+            assert len(mentions) == 1
+            assert mentions[0].handle.lower() == "alice"
