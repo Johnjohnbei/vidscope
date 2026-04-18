@@ -14,7 +14,7 @@
 - ✅ **M006:** Creator-as-first-class-entity
 - ✅ **M007:** Rich content metadata — descriptions, links, hashtags, mentions, music
 - ✅ **M008:** Visual intelligence on frames — OCR, thumbnail, content-shape
-- 📋 **M009:** Engagement signals + velocity time-series (roadmap ready)
+- 📐 **M009:** Engagement signals + velocity time-series (planned — 4 plans, ready to execute)
 - 📋 **M010:** Multi-dimensional scoring + controlled taxonomy (roadmap ready)
 - 📋 **M011:** Veille workflow layer — tracking, tags, collections, exports (roadmap ready)
 
@@ -25,6 +25,6 @@
 - None
 
 ## Next Action
-M008 complete — VisualIntelligenceStage livré, OCR/thumbnail/content_shape opérationnels, 1064 tests verts.
-Prochaine étape : démarrer M009 (Engagement signals + velocity time-series).
-Recommended command: `/gsd-discuss-phase M009`.
+M009 planifié — 4 plans (S01-S04) créés, vérifiés (10/10 dimensions passées), prêts à exécuter.
+R050/R051/R052 couverts. Wave 0 : ajout `hypothesis>=6.0,<7` + stubs tests dans S01.
+Recommended command: `/gsd-execute-phase M009`.
