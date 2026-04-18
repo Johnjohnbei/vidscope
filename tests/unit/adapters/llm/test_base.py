@@ -14,6 +14,13 @@ import pytest
 from vidscope.adapters.llm._base import (
     DEFAULT_MAX_ATTEMPTS,
     LlmCallContext,
+    _SYSTEM_PROMPT,
+    _parse_bool_flag,
+    _parse_content_type,
+    _parse_reasoning,
+    _parse_score_100,
+    _parse_sentiment,
+    _parse_verticals,
     build_messages,
     call_with_retry,
     make_analysis,
@@ -22,7 +29,9 @@ from vidscope.adapters.llm._base import (
 from vidscope.domain import (
     Analysis,
     AnalysisError,
+    ContentType,
     Language,
+    SentimentLabel,
     Transcript,
     TranscriptSegment,
     VideoId,
@@ -344,3 +353,290 @@ class TestMakeAnalysis:
     def test_non_dict_raises(self) -> None:
         with pytest.raises(AnalysisError, match="dict"):
             make_analysis(["not", "a", "dict"], _transcript(), provider="groq")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# M010 — _SYSTEM_PROMPT V2
+# ---------------------------------------------------------------------------
+
+
+class TestSystemPromptM010:
+    @pytest.mark.parametrize("key", [
+        "verticals",
+        "information_density",
+        "actionability",
+        "novelty",
+        "production_quality",
+        "sentiment",
+        "is_sponsored",
+        "content_type",
+        "reasoning",
+    ])
+    def test_prompt_mentions_every_m010_key(self, key: str) -> None:
+        assert key in _SYSTEM_PROMPT
+
+    def test_prompt_lists_content_type_enum_values(self) -> None:
+        for ct in ("tutorial", "review", "vlog", "news", "story",
+                   "opinion", "comedy", "educational", "promo", "unknown"):
+            assert ct in _SYSTEM_PROMPT
+
+    def test_prompt_lists_sentiment_enum_values(self) -> None:
+        for s in ("positive", "negative", "neutral", "mixed"):
+            assert s in _SYSTEM_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# M010 — _parse_score_100
+# ---------------------------------------------------------------------------
+
+
+class TestParseScore100:
+    def test_none_returns_none(self) -> None:
+        assert _parse_score_100(None) is None
+
+    def test_int_in_range_returns_float(self) -> None:
+        assert _parse_score_100(50) == 50.0
+
+    def test_float_preserved(self) -> None:
+        assert _parse_score_100(72.5) == 72.5
+
+    def test_out_of_range_clamped(self) -> None:
+        assert _parse_score_100(150) == 100.0
+        assert _parse_score_100(-5) == 0.0
+
+    def test_numeric_string_parsed(self) -> None:
+        assert _parse_score_100("75") == 75.0
+
+    def test_non_numeric_string_returns_none(self) -> None:
+        assert _parse_score_100("bogus") is None
+
+    def test_nan_returns_none(self) -> None:
+        assert _parse_score_100(float("nan")) is None
+
+
+# ---------------------------------------------------------------------------
+# M010 — _parse_sentiment
+# ---------------------------------------------------------------------------
+
+
+class TestParseSentiment:
+    @pytest.mark.parametrize("raw,expected", [
+        ("positive", SentimentLabel.POSITIVE),
+        ("NEGATIVE", SentimentLabel.NEGATIVE),
+        ("  neutral  ", SentimentLabel.NEUTRAL),
+        ("Mixed", SentimentLabel.MIXED),
+    ])
+    def test_valid_strings(self, raw: str, expected: SentimentLabel) -> None:
+        assert _parse_sentiment(raw) is expected
+
+    @pytest.mark.parametrize("raw", [None, "joyful", "", 123, ["positive"]])
+    def test_invalid_returns_none(self, raw: object) -> None:
+        assert _parse_sentiment(raw) is None
+
+    def test_enum_passthrough(self) -> None:
+        assert _parse_sentiment(SentimentLabel.POSITIVE) is SentimentLabel.POSITIVE
+
+
+# ---------------------------------------------------------------------------
+# M010 — _parse_content_type
+# ---------------------------------------------------------------------------
+
+
+class TestParseContentType:
+    @pytest.mark.parametrize("raw,expected", [
+        ("tutorial", ContentType.TUTORIAL),
+        ("REVIEW", ContentType.REVIEW),
+        ("  vlog  ", ContentType.VLOG),
+        ("Promo", ContentType.PROMO),
+    ])
+    def test_valid_strings(self, raw: str, expected: ContentType) -> None:
+        assert _parse_content_type(raw) is expected
+
+    @pytest.mark.parametrize("raw", [None, "podcast", "", 42, ["tutorial"]])
+    def test_invalid_returns_none(self, raw: object) -> None:
+        assert _parse_content_type(raw) is None
+
+
+# ---------------------------------------------------------------------------
+# M010 — _parse_bool_flag
+# ---------------------------------------------------------------------------
+
+
+class TestParseBoolFlag:
+    @pytest.mark.parametrize("raw,expected", [
+        (True, True),
+        (False, False),
+        (1, True),
+        (0, False),
+        ("true", True),
+        ("False", False),
+        ("TRUE", True),
+        ("yes", True),
+        ("no", False),
+        ("1", True),
+        ("0", False),
+    ])
+    def test_valid(self, raw: object, expected: bool) -> None:
+        assert _parse_bool_flag(raw) is expected
+
+    @pytest.mark.parametrize("raw", [None, "maybe", "bogus", 2, 3.14, ["true"]])
+    def test_invalid_returns_none(self, raw: object) -> None:
+        assert _parse_bool_flag(raw) is None
+
+
+# ---------------------------------------------------------------------------
+# M010 — _parse_verticals
+# ---------------------------------------------------------------------------
+
+
+class TestParseVerticals:
+    def test_valid_list(self) -> None:
+        assert _parse_verticals(["tech", "AI", "Fitness"]) == ("tech", "ai", "fitness")
+
+    def test_deduplicates(self) -> None:
+        result = _parse_verticals(["tech", "tech", "ai", "TECH"])
+        assert result == ("tech", "ai")
+
+    def test_caps_at_max_count(self) -> None:
+        result = _parse_verticals(["a", "b", "c", "d", "e", "f", "g"], max_count=5)
+        assert len(result) == 5
+
+    def test_non_list_returns_empty(self) -> None:
+        assert _parse_verticals("tech") == ()
+        assert _parse_verticals(None) == ()
+        assert _parse_verticals(42) == ()
+
+    def test_non_string_elements_skipped(self) -> None:
+        assert _parse_verticals(["tech", 42, None, "ai"]) == ("tech", "ai")
+
+
+# ---------------------------------------------------------------------------
+# M010 — _parse_reasoning
+# ---------------------------------------------------------------------------
+
+
+class TestParseReasoning:
+    def test_valid_string(self) -> None:
+        text = "This is a short tutorial."
+        assert _parse_reasoning(text) == text
+
+    def test_none_or_empty_returns_none(self) -> None:
+        assert _parse_reasoning(None) is None
+        assert _parse_reasoning("") is None
+        assert _parse_reasoning("   ") is None
+
+    def test_truncated_at_500_chars(self) -> None:
+        long = "x" * 800
+        result = _parse_reasoning(long)
+        assert result is not None
+        assert len(result) <= 504  # 500 + "..."
+        assert result.endswith("...")
+
+    def test_non_string_returns_none(self) -> None:
+        assert _parse_reasoning(42) is None
+        assert _parse_reasoning(["a"]) is None
+
+
+# ---------------------------------------------------------------------------
+# M010 — make_analysis V2
+# ---------------------------------------------------------------------------
+
+
+def _t(*, language: Language = Language.ENGLISH) -> Transcript:
+    return Transcript(
+        video_id=VideoId(1),
+        language=language,
+        full_text="hello world",
+        segments=(),
+    )
+
+
+class TestMakeAnalysisV2:
+    def test_happy_path_all_m010_fields(self) -> None:
+        parsed = {
+            "language": "en",
+            "keywords": ["code", "python"],
+            "topics": ["code"],
+            "verticals": ["tech", "ai"],
+            "score": 75,
+            "information_density": 70,
+            "actionability": 80,
+            "novelty": 40,
+            "production_quality": 60,
+            "sentiment": "positive",
+            "is_sponsored": False,
+            "content_type": "tutorial",
+            "reasoning": "Clear structured tutorial.",
+            "summary": "A tutorial about Python",
+        }
+        a = make_analysis(parsed, _t(language=Language.ENGLISH), provider="test")
+        assert isinstance(a, Analysis)
+        assert a.verticals == ("tech", "ai")
+        assert a.information_density == 70.0
+        assert a.actionability == 80.0
+        assert a.novelty == 40.0
+        assert a.production_quality == 60.0
+        assert a.sentiment is SentimentLabel.POSITIVE
+        assert a.is_sponsored is False
+        assert a.content_type is ContentType.TUTORIAL
+        assert a.reasoning == "Clear structured tutorial."
+
+    def test_missing_m010_fields_all_none(self) -> None:
+        """V1-shape parsed dict → V2 fields all None (backward compat)."""
+        parsed = {
+            "language": "en",
+            "keywords": ["a"],
+            "topics": ["a"],
+            "score": 50,
+            "summary": "x",
+        }
+        a = make_analysis(parsed, _t(), provider="test")
+        assert a.verticals == ()
+        assert a.information_density is None
+        assert a.actionability is None
+        assert a.novelty is None
+        assert a.production_quality is None
+        assert a.sentiment is None
+        assert a.is_sponsored is None
+        assert a.content_type is None
+        assert a.reasoning is None
+
+    def test_invalid_sentiment_becomes_none(self) -> None:
+        parsed = {"sentiment": "joyful"}
+        a = make_analysis(parsed, _t(), provider="test")
+        assert a.sentiment is None
+
+    def test_invalid_content_type_becomes_none(self) -> None:
+        parsed = {"content_type": "podcast"}
+        a = make_analysis(parsed, _t(), provider="test")
+        assert a.content_type is None
+
+    def test_out_of_range_scores_clamped(self) -> None:
+        parsed = {
+            "information_density": 200,
+            "actionability": -50,
+            "novelty": 99.9,
+            "production_quality": "75",
+        }
+        a = make_analysis(parsed, _t(), provider="test")
+        assert a.information_density == 100.0
+        assert a.actionability == 0.0
+        assert a.novelty == 99.9
+        assert a.production_quality == 75.0
+
+    def test_is_sponsored_int_coercion(self) -> None:
+        assert make_analysis({"is_sponsored": 1}, _t(), provider="x").is_sponsored is True
+        assert make_analysis({"is_sponsored": 0}, _t(), provider="x").is_sponsored is False
+        assert make_analysis({"is_sponsored": "true"}, _t(), provider="x").is_sponsored is True
+
+    def test_non_list_verticals_is_empty_tuple(self) -> None:
+        parsed = {"verticals": "tech"}  # wrong shape
+        assert make_analysis(parsed, _t(), provider="x").verticals == ()
+
+    def test_reasoning_empty_is_none(self) -> None:
+        assert make_analysis({"reasoning": ""}, _t(), provider="x").reasoning is None
+        assert make_analysis({"reasoning": "   "}, _t(), provider="x").reasoning is None
+
+    def test_non_dict_parsed_raises(self) -> None:
+        with pytest.raises(AnalysisError):
+            make_analysis([], _t(), provider="x")  # type: ignore[arg-type]

@@ -39,7 +39,6 @@ __all__ = [
     "Transcript",
     "TranscriptSegment",
     "Video",
-    "VideoStats",
     "WatchRefresh",
     "WatchedAccount",
 ]
@@ -226,30 +225,3 @@ class WatchRefresh:
         if self.finished_at is None:
             return None
         return self.finished_at - self.started_at
-
-
-@dataclass(frozen=True, slots=True)
-class VideoStats:
-    """A single stats snapshot for a video at a specific point in time.
-
-    Snapshots are append-only — one row per ``(video_id, captured_at)``
-    pair. The ``captured_at`` timestamp is truncated to the second
-    (microsecond=0) so that duplicate probes within the same second are
-    silently ignored at the DB level (UNIQUE constraint + ON CONFLICT DO
-    NOTHING).
-
-    All five counter fields are ``int | None``. ``None`` means the
-    platform did not return that metric — it must never be confused with
-    ``0`` (D-03). Callers must check ``is None`` explicitly before
-    comparing against zero.
-    """
-
-    video_id: VideoId
-    captured_at: datetime  # UTC-aware, resolution = second (D-01)
-    view_count: int | None = None
-    like_count: int | None = None
-    repost_count: int | None = None  # yt-dlp field name (D-02), NOT share_count
-    comment_count: int | None = None
-    save_count: int | None = None
-    id: int | None = None
-    created_at: datetime | None = None

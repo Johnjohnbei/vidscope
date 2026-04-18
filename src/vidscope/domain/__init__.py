@@ -17,7 +17,6 @@ from vidscope.domain.entities import (
     Transcript,
     TranscriptSegment,
     Video,
-    VideoStats,
     WatchedAccount,
     WatchRefresh,
 )
@@ -53,7 +52,6 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "Transcript",
     "TranscriptSegment",
     "Video",
-    "VideoStats",
     "WatchedAccount",
     "WatchRefresh",
     # errors

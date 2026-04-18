@@ -32,7 +32,14 @@ from typing import Any
 
 import httpx
 
-from vidscope.domain import Analysis, AnalysisError, Language, Transcript
+from vidscope.domain import (
+    Analysis,
+    AnalysisError,
+    ContentType,
+    Language,
+    SentimentLabel,
+    Transcript,
+)
 
 __all__ = [
     "DEFAULT_MAX_ATTEMPTS",
@@ -67,13 +74,33 @@ _BACKOFF_CAP_SECONDS: float = 8.0
 _SYSTEM_PROMPT = (
     "You are a video-analysis assistant. Given the transcript of a "
     "short-form vertical video, return a strict JSON object with "
-    "these keys and nothing else:\n"
-    '  "language": ISO 639-1 lowercase 2-letter code (e.g. "en")\n'
+    "EXACTLY these keys and nothing else (no markdown, no prose):\n"
+    '  "language": ISO 639-1 lowercase 2-letter code (e.g. "en" or "fr")\n'
     '  "keywords": array of 5-10 lowercase keywords from the transcript\n'
     '  "topics": array of 1-3 short topic phrases (2-4 words each)\n'
-    '  "score": integer 0-100 measuring content quality and richness\n'
-    '  "summary": one-sentence summary, max 200 characters\n'
-    "Do not wrap the JSON in markdown fences. Do not add explanations."
+    '  "verticals": array of 0-5 lowercase vertical slugs that best '
+    "describe the content (e.g. tech, beauty, fitness, finance, food, "
+    "travel, gaming, education, fashion, music, productivity, ai)\n"
+    '  "score": integer 0-100 measuring overall content quality and richness\n'
+    '  "information_density": integer 0-100 measuring meaningful-content ratio\n'
+    '  "actionability": integer 0-100 measuring how actionable the advice is '
+    "(0 = pure entertainment, 100 = step-by-step tutorial)\n"
+    '  "novelty": integer 0-100 measuring how novel/original the ideas are\n'
+    '  "production_quality": integer 0-100 measuring pacing/clarity/structure '
+    "(not video-quality — transcript-inferable signals only)\n"
+    '  "sentiment": one of "positive", "negative", "neutral", "mixed"\n'
+    '  "is_sponsored": boolean — true if the transcript signals a paid '
+    'partnership (phrases like "sponsored by", "in partnership with", '
+    '"#ad", "use code", "affiliate"), else false\n'
+    '  "content_type": one of "tutorial", "review", "vlog", "news", '
+    '"story", "opinion", "comedy", "educational", "promo", "unknown"\n'
+    '  "reasoning": 2-3 short sentences explaining the verdict '
+    "(why this content_type, what drove the sentiment, any sponsorship cue). "
+    "Max 500 characters.\n"
+    '  "summary": one-sentence factual summary, max 200 characters\n'
+    "Numeric fields must be integers in [0, 100]. All strings must be "
+    "lowercase except where noted. Return bare JSON — no code fences, "
+    "no explanations, no preamble."
 )
 
 
@@ -409,13 +436,137 @@ def run_openai_compatible(
     return make_analysis(parsed, transcript, provider=provider_name)
 
 
+# ---------------------------------------------------------------------------
+# M010 — defensive field parsers
+# ---------------------------------------------------------------------------
+
+
+def _parse_score_100(value: Any) -> float | None:
+    """Parse a 0-100 numeric score. Returns None for non-numeric inputs.
+
+    Accepts int, float, or numeric string. Clamps to [0.0, 100.0].
+    """
+    if value is None:
+        return None
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    if num != num:  # NaN
+        return None
+    return max(0.0, min(100.0, num))
+
+
+def _parse_sentiment(value: Any) -> SentimentLabel | None:
+    """Parse a sentiment string case-insensitively. None on invalid."""
+    if value is None:
+        return None
+    if isinstance(value, SentimentLabel):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return SentimentLabel(value.strip().lower())
+    except ValueError:
+        return None
+
+
+def _parse_content_type(value: Any) -> ContentType | None:
+    """Parse a content_type string case-insensitively. None on invalid."""
+    if value is None:
+        return None
+    if isinstance(value, ContentType):
+        return value
+    if not isinstance(value, str):
+        return None
+    try:
+        return ContentType(value.strip().lower())
+    except ValueError:
+        return None
+
+
+_TRUTHY_STRINGS: frozenset[str] = frozenset({"true", "yes", "1", "t"})
+_FALSY_STRINGS: frozenset[str] = frozenset({"false", "no", "0", "f"})
+
+
+def _parse_bool_flag(value: Any) -> bool | None:
+    """Parse a boolean flag tolerantly. None on unrecognised inputs.
+
+    Recognises: True/False, 0/1, 'true'/'false' (case-insensitive),
+    'yes'/'no', 't'/'f'. Any other value → None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+        return None
+    if isinstance(value, str):
+        norm = value.strip().lower()
+        if norm in _TRUTHY_STRINGS:
+            return True
+        if norm in _FALSY_STRINGS:
+            return False
+        return None
+    return None
+
+
+def _parse_verticals(value: Any, *, max_count: int = 5) -> tuple[str, ...]:
+    """Parse a verticals array. Returns () for invalid input.
+
+    Normalises to lowercase stripped strings. Deduplicates while
+    preserving order. Caps at ``max_count``.
+    """
+    if not isinstance(value, list):
+        return ()
+    seen: set[str] = set()
+    result: list[str] = []
+    for v in value:
+        if not isinstance(v, str):
+            continue
+        norm = v.strip().lower()
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        result.append(norm)
+        if len(result) >= max_count:
+            break
+    return tuple(result)
+
+
+_REASONING_MAX_CHARS: int = 500
+
+
+def _parse_reasoning(value: Any) -> str | None:
+    """Parse reasoning text. None for empty/non-string. Truncated at 500."""
+    if value is None or not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) > _REASONING_MAX_CHARS:
+        text = text[:_REASONING_MAX_CHARS].rstrip() + "..."
+    return text
+
+
+# ---------------------------------------------------------------------------
+# JSON → Analysis
+# ---------------------------------------------------------------------------
+
+
 def make_analysis(
     parsed: dict[str, Any], transcript: Transcript, *, provider: str
 ) -> Analysis:
     """Convert parsed LLM JSON output into an :class:`Analysis`.
 
-    Defensive about missing/malformed keys — fall back to safe defaults
-    rather than raising. The score is clamped to [0, 100].
+    Defensive about missing/malformed keys — falls back to safe defaults
+    rather than raising. Extended in M010 to parse the 9 new fields
+    (verticals, 4 score dimensions, sentiment, is_sponsored, content_type,
+    reasoning). The score is clamped to [0, 100].
 
     Raises
     ------
@@ -428,6 +579,7 @@ def make_analysis(
             retryable=False,
         )
 
+    # --- V1 fields (preserved) ---
     keywords_raw = parsed.get("keywords") or []
     if not isinstance(keywords_raw, list):
         keywords_raw = []
@@ -442,15 +594,7 @@ def make_analysis(
         str(t).strip() for t in topics_raw if t and str(t).strip()
     )[:3]
 
-    score_raw = parsed.get("score")
-    score: float | None
-    if score_raw is None:
-        score = None
-    else:
-        try:
-            score = max(0.0, min(100.0, float(score_raw)))
-        except (TypeError, ValueError):
-            score = None
+    score = _parse_score_100(parsed.get("score"))
 
     summary_raw = parsed.get("summary")
     summary: str | None
@@ -471,6 +615,17 @@ def make_analysis(
             except ValueError:
                 language = Language.UNKNOWN
 
+    # --- M010 fields (all defensive, never raise) ---
+    verticals = _parse_verticals(parsed.get("verticals"))
+    information_density = _parse_score_100(parsed.get("information_density"))
+    actionability = _parse_score_100(parsed.get("actionability"))
+    novelty = _parse_score_100(parsed.get("novelty"))
+    production_quality = _parse_score_100(parsed.get("production_quality"))
+    sentiment = _parse_sentiment(parsed.get("sentiment"))
+    is_sponsored = _parse_bool_flag(parsed.get("is_sponsored"))
+    content_type = _parse_content_type(parsed.get("content_type"))
+    reasoning = _parse_reasoning(parsed.get("reasoning"))
+
     return Analysis(
         video_id=transcript.video_id,
         provider=provider,
@@ -479,4 +634,13 @@ def make_analysis(
         topics=topics,
         score=score,
         summary=summary,
+        verticals=verticals,
+        information_density=information_density,
+        actionability=actionability,
+        novelty=novelty,
+        production_quality=production_quality,
+        sentiment=sentiment,
+        is_sponsored=is_sponsored,
+        content_type=content_type,
+        reasoning=reasoning,
     )
