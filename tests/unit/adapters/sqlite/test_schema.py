@@ -338,3 +338,42 @@ class TestM007Schema:
         assert "description" in cols
         assert "music_track" in cols
         assert "music_artist" in cols
+
+
+class TestLinksSchema:
+    """M007/S02-P01: links table + indexes."""
+
+    def test_links_table_exists_after_init_db(self, engine: Engine) -> None:
+        names = set(inspect(engine).get_table_names())
+        assert "links" in names
+
+    def test_links_table_has_expected_columns(self, engine: Engine) -> None:
+        cols = {c["name"] for c in inspect(engine).get_columns("links")}
+        expected = {
+            "id", "video_id", "url", "normalized_url",
+            "source", "position_ms", "created_at",
+        }
+        assert expected == cols
+
+    def test_links_video_id_index_exists(self, engine: Engine) -> None:
+        indexes = inspect(engine).get_indexes("links")
+        names = {idx["name"] for idx in indexes}
+        assert "idx_links_video_id" in names
+
+    def test_links_normalized_url_index_exists(self, engine: Engine) -> None:
+        indexes = inspect(engine).get_indexes("links")
+        names = {idx["name"] for idx in indexes}
+        assert "idx_links_normalized_url" in names
+
+    def test_links_source_index_exists(self, engine: Engine) -> None:
+        indexes = inspect(engine).get_indexes("links")
+        names = {idx["name"] for idx in indexes}
+        assert "idx_links_source" in names
+
+    def test_links_table_created_by_init_db_sql(self, engine: Engine) -> None:
+        """Verify the links table DDL exists in sqlite_master."""
+        with engine.connect() as conn:
+            sql = conn.execute(
+                text('SELECT sql FROM sqlite_master WHERE name="links"')
+            ).scalar()
+        assert sql is not None
