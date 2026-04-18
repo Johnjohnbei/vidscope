@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from sqlalchemy import Engine, inspect, text
 
-from vidscope.adapters.sqlite.schema import _ensure_video_stats_table, init_db
+from vidscope.adapters.sqlite.schema import (
+    _ensure_analysis_v2_columns,
+    _ensure_video_stats_table,
+    init_db,
+)
 
 
 class TestInitDb:
@@ -109,3 +113,65 @@ class TestInitDb:
         """_ensure_video_stats_table does not raise when table already exists."""
         with engine.begin() as conn:
             _ensure_video_stats_table(conn)  # second call — must be no-op
+
+
+class TestAnalysisV2Migration:
+    """M010 additive migration on analyses table."""
+
+    def test_new_columns_exist_after_init_db(self, engine: Engine) -> None:
+        with engine.connect() as conn:
+            cols = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(analyses)"))
+            }
+        expected_new = {
+            "verticals",
+            "information_density",
+            "actionability",
+            "novelty",
+            "production_quality",
+            "sentiment",
+            "is_sponsored",
+            "content_type",
+            "reasoning",
+        }
+        missing = expected_new - cols
+        assert not missing, f"missing M010 columns on analyses: {missing}"
+
+    def test_ensure_analysis_v2_columns_is_idempotent(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            _ensure_analysis_v2_columns(conn)
+            _ensure_analysis_v2_columns(conn)
+        # no exception means idempotent
+
+    def test_pre_m010_rows_survive_migration(self, engine: Engine) -> None:
+        """Rows inserted before the M010 columns existed must stay intact."""
+        from datetime import UTC, datetime
+
+        # Insert a row using only pre-M010 columns (values for M010 columns NULL by default)
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO videos (platform, platform_id, url, created_at) "
+                     "VALUES (:p, :pid, :u, :c)"),
+                {"p": "youtube", "pid": "legacy1", "u": "https://y.be/legacy1",
+                 "c": datetime(2026, 1, 1, tzinfo=UTC)},
+            )
+            vid = conn.execute(text("SELECT id FROM videos WHERE platform_id='legacy1'")).scalar()
+            conn.execute(
+                text("INSERT INTO analyses (video_id, provider, language, keywords, topics, "
+                     "score, summary, created_at) "
+                     "VALUES (:v, 'heuristic', 'en', '[]', '[]', 42, 'legacy summary', :c)"),
+                {"v": vid, "c": datetime(2026, 1, 1, tzinfo=UTC)},
+            )
+        # Re-apply migration
+        with engine.begin() as conn:
+            _ensure_analysis_v2_columns(conn)
+        # Legacy data still there
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT score, summary, reasoning FROM analyses WHERE provider='heuristic'")
+            ).mappings().first()
+        assert row is not None
+        assert row["score"] == 42
+        assert row["summary"] == "legacy summary"
+        assert row["reasoning"] is None

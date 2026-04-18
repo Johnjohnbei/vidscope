@@ -143,6 +143,16 @@ analyses = Table(
     Column("topics", JSON, nullable=False, default=list),
     Column("score", Float, nullable=True),
     Column("summary", Text, nullable=True),
+    # M010 additive columns (all nullable — D032 additive migration)
+    Column("verticals", JSON, nullable=True),
+    Column("information_density", Float, nullable=True),
+    Column("actionability", Float, nullable=True),
+    Column("novelty", Float, nullable=True),
+    Column("production_quality", Float, nullable=True),
+    Column("sentiment", String(32), nullable=True),
+    Column("is_sponsored", Boolean, nullable=True),
+    Column("content_type", String(64), nullable=True),
+    Column("reasoning", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
 )
 
@@ -248,12 +258,16 @@ def init_db(engine: Engine) -> None:
     databases gain the ``video_stats`` table and its indexes on upgrade
     without requiring a separate migration command. The named indexes are
     created with ``IF NOT EXISTS`` so this is safe to call repeatedly.
+
+    M010: calls :func:`_ensure_analysis_v2_columns` so that pre-M010
+    databases gain the 9 new nullable columns on the ``analyses`` table.
     """
     metadata.create_all(engine)
     with engine.begin() as conn:
         _create_fts5(conn)
         _ensure_video_stats_table(conn)
         _ensure_video_stats_indexes(conn)
+        _ensure_analysis_v2_columns(conn)
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -335,6 +349,38 @@ def _ensure_video_stats_indexes(conn: Connection) -> None:
             "ON video_stats (captured_at)"
         )
     )
+
+
+def _ensure_analysis_v2_columns(conn: Connection) -> None:
+    """M010 additive migration: ensure ``analyses`` carries the 9 new columns.
+
+    Inspects ``PRAGMA table_info(analyses)`` to decide which ALTERs are
+    needed — SQLite's ``ADD COLUMN`` without ``IF NOT EXISTS`` would fail
+    on a second call, so we branch on the existing column set for maximum
+    portability. Each ALTER adds a nullable column. Pre-M010 rows keep
+    their existing values; new columns are NULL until reanalysis.
+
+    Idempotent — safe to call on every startup.
+    """
+    existing_cols = {
+        row[1]
+        for row in conn.execute(text("PRAGMA table_info(analyses)"))
+    }
+    new_columns = [
+        ("verticals", "JSON"),
+        ("information_density", "FLOAT"),
+        ("actionability", "FLOAT"),
+        ("novelty", "FLOAT"),
+        ("production_quality", "FLOAT"),
+        ("sentiment", "VARCHAR(32)"),
+        ("is_sponsored", "BOOLEAN"),
+        ("content_type", "VARCHAR(64)"),
+        ("reasoning", "TEXT"),
+    ]
+    for col_name, col_type in new_columns:
+        if col_name in existing_cols:
+            continue
+        conn.execute(text(f"ALTER TABLE analyses ADD COLUMN {col_name} {col_type}"))
 
 
 # Re-export a type alias used by tests that want to introspect row maps

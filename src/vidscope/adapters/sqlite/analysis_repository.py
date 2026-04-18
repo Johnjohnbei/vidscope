@@ -9,7 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.engine import Connection
 
 from vidscope.adapters.sqlite.schema import analyses as analyses_table
-from vidscope.domain import Analysis, Language, VideoId
+from vidscope.domain import (
+    Analysis,
+    ContentType,
+    Language,
+    SentimentLabel,
+    VideoId,
+)
 from vidscope.domain.errors import StorageError
 
 __all__ = ["AnalysisRepositorySQLite"]
@@ -72,12 +78,50 @@ def _analysis_to_row(analysis: Analysis) -> dict[str, Any]:
         "topics": list(analysis.topics),
         "score": analysis.score,
         "summary": analysis.summary,
+        # M010 additive fields
+        "verticals": list(analysis.verticals) if analysis.verticals else None,
+        "information_density": analysis.information_density,
+        "actionability": analysis.actionability,
+        "novelty": analysis.novelty,
+        "production_quality": analysis.production_quality,
+        "sentiment": analysis.sentiment.value if analysis.sentiment is not None else None,
+        "is_sponsored": analysis.is_sponsored,
+        "content_type": (
+            analysis.content_type.value if analysis.content_type is not None else None
+        ),
+        "reasoning": analysis.reasoning,
         "created_at": analysis.created_at or datetime.now(UTC),
     }
 
 
 def _row_to_analysis(row: Any) -> Analysis:
     data = cast("dict[str, Any]", dict(row))
+
+    # Defensive enum parsing — Pitfall 4: NULL or unknown value must
+    # produce None, not raise.
+    sentiment_raw = data.get("sentiment")
+    sentiment: SentimentLabel | None = None
+    if sentiment_raw:
+        try:
+            sentiment = SentimentLabel(str(sentiment_raw))
+        except ValueError:
+            sentiment = None
+
+    content_type_raw = data.get("content_type")
+    content_type: ContentType | None = None
+    if content_type_raw:
+        try:
+            content_type = ContentType(str(content_type_raw))
+        except ValueError:
+            content_type = None
+
+    verticals_raw = data.get("verticals") or ()
+    if isinstance(verticals_raw, str):
+        # Legacy/corrupted — treat as empty
+        verticals: tuple[str, ...] = ()
+    else:
+        verticals = tuple(str(v) for v in verticals_raw)
+
     return Analysis(
         id=int(data["id"]),
         video_id=VideoId(int(data["video_id"])),
@@ -87,6 +131,15 @@ def _row_to_analysis(row: Any) -> Analysis:
         topics=tuple(data.get("topics") or ()),
         score=data.get("score"),
         summary=data.get("summary"),
+        verticals=verticals,
+        information_density=data.get("information_density"),
+        actionability=data.get("actionability"),
+        novelty=data.get("novelty"),
+        production_quality=data.get("production_quality"),
+        sentiment=sentiment,
+        is_sponsored=data.get("is_sponsored"),
+        content_type=content_type,
+        reasoning=data.get("reasoning"),
         created_at=_ensure_utc(data.get("created_at")),
     )
 

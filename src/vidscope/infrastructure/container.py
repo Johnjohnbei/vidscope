@@ -39,9 +39,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 
 from sqlalchemy import Engine
 
+from vidscope.adapters.config import YamlTaxonomy
 from vidscope.adapters.ffmpeg import FfmpegFrameExtractor
 from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
@@ -69,6 +71,7 @@ from vidscope.ports.pipeline import (
 )
 from vidscope.ports.stats_probe import StatsProbe
 from vidscope.ports.storage import MediaStorage
+from vidscope.ports.taxonomy_catalog import TaxonomyCatalog
 from vidscope.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 
 __all__ = ["Container", "SystemClock", "build_container"]
@@ -131,6 +134,7 @@ class Container:
     frame_extractor: FrameExtractor
     analyzer: Analyzer
     stats_probe: StatsProbe
+    taxonomy_catalog: TaxonomyCatalog
     stats_stage: StatsStage
     pipeline_runner: PipelineRunner
     clock: Clock = field(default_factory=SystemClock)
@@ -185,6 +189,13 @@ def build_container(config: Config | None = None) -> Container:
     stats_probe: StatsProbe = YtdlpStatsProbe(cookies_file=resolved_config.cookies_file)
     # StatsStage is standalone — NOT added to pipeline_runner.stages (anti-pitfall M009)
     stats_stage = StatsStage(stats_probe=stats_probe)
+
+    # M010: load the controlled vertical taxonomy from config/taxonomy.yaml
+    # at the repo root. The file is required — fail-fast on missing/invalid.
+    _taxonomy_path = Path("config") / "taxonomy.yaml"
+    if not _taxonomy_path.is_absolute():
+        _taxonomy_path = Path.cwd() / _taxonomy_path
+    taxonomy_catalog: TaxonomyCatalog = YamlTaxonomy(_taxonomy_path)
 
     # FasterWhisperTranscriber loads the model lazily on the first
     # transcribe call (S03/D026), so this constructor never triggers
@@ -246,6 +257,7 @@ def build_container(config: Config | None = None) -> Container:
         frame_extractor=frame_extractor,
         analyzer=analyzer,
         stats_probe=stats_probe,
+        taxonomy_catalog=taxonomy_catalog,
         stats_stage=stats_stage,
         pipeline_runner=pipeline_runner,
         clock=clock,
