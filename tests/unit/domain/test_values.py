@@ -40,6 +40,7 @@ class TestStageName:
             StageName.TRANSCRIBE,
             StageName.FRAMES,
             StageName.ANALYZE,
+            StageName.METADATA_EXTRACT,
             StageName.INDEX,
         ]
 

@@ -36,6 +36,8 @@ __all__ = [
     "Analysis",
     "Creator",
     "Frame",
+    "Hashtag",
+    "Mention",
     "PipelineRun",
     "Transcript",
     "TranscriptSegment",
@@ -54,6 +56,15 @@ class Video:
 
     ``media_key`` is the opaque storage key resolved by :class:`MediaStorage`.
     ``None`` means the ingest stage has not completed yet.
+
+    ``description``, ``music_track``, ``music_artist`` carry the raw
+    platform caption verbatim and the music identification reported by
+    the platform (per M007 D-01). Stored as direct columns on the
+    ``videos`` table — no ``VideoMetadata`` side entity exists (D-01
+    rejects the side-entity alternative so ``vidscope show`` reads
+    every caption/music field in a single row fetch, zero JOIN). All
+    three fields are ``None`` when the platform does not expose them;
+    they are NEVER populated with a synthesised placeholder (per R045).
     """
 
     platform: Platform
@@ -68,6 +79,9 @@ class Video:
     media_key: str | None = None
     created_at: datetime | None = None
     creator_id: CreatorId | None = None
+    description: str | None = None
+    music_track: str | None = None
+    music_artist: str | None = None
 
     def is_ingested(self) -> bool:
         """Return ``True`` once the ingest stage has stored a media file."""
@@ -245,4 +259,54 @@ class Creator:
     is_orphan: bool = False
     first_seen_at: datetime | None = None
     last_seen_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Hashtag:
+    """A hashtag attached to a video (e.g. ``"cooking"`` for ``#Cooking``).
+
+    Stored in a side table keyed by ``(video_id, tag)`` — the same
+    canonical pattern as :class:`Creator` (per M007 D-05). ``tag`` is
+    the canonical lowercase form WITHOUT the leading ``#`` (per
+    D-04: ``#Coding`` and ``#coding`` must match exactly after
+    canonicalisation). The adapter that inserts the row (M007/S01
+    ``HashtagRepositorySQLite``) is the single place responsible for
+    applying ``tag.lower().lstrip("#")`` — the dataclass itself
+    preserves whatever value the caller passes so tests and fixtures
+    can construct instances deterministically.
+
+    ``id`` is ``None`` until the repository persists the row; the
+    repository returns a new instance with ``id`` populated.
+    """
+
+    video_id: VideoId
+    tag: str
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Mention:
+    """An ``@handle`` mention extracted from a video's description.
+
+    Stored in a side table keyed by ``(video_id, handle)`` — same side-
+    table pattern as :class:`Hashtag` (per M007 D-05). ``handle`` is
+    the canonical lowercase form WITHOUT the leading ``@`` (per D-04
+    exact-match facet). ``platform`` is optional: when the mention
+    syntax unambiguously identifies a platform (e.g. a TikTok-only
+    handle pattern) the extractor MAY populate it; otherwise ``None``
+    is legitimate. Per D-03, no ``creator_id`` FK is stored — the
+    Mention↔Creator linkage is derivable via JOIN at query time and
+    is deliberately deferred to M011. This keeps ingest free of any
+    extra DB lookups per mention.
+
+    ``id`` is ``None`` until the repository persists the row; the
+    repository returns a new instance with ``id`` populated.
+    """
+
+    video_id: VideoId
+    handle: str
+    platform: Platform | None = None
+    id: int | None = None
     created_at: datetime | None = None
