@@ -128,18 +128,61 @@ def build_mcp_server(container: Container) -> FastMCP:
         }
 
     @mcp.tool()
-    def vidscope_search(query: str, limit: int = 20) -> dict[str, Any]:
+    def vidscope_search(
+        query: str,
+        limit: int = 20,
+        content_type: str | None = None,
+        min_actionability: int | None = None,
+        is_sponsored: bool | None = None,
+        status: str | None = None,
+        starred: bool | None = None,
+        tag: str | None = None,
+        collection: str | None = None,
+    ) -> dict[str, Any]:
         """Full-text search across transcripts and analysis summaries.
 
-        Uses SQLite FTS5 with BM25 ranking. Returns a list of hits
-        with video_id, source ('transcript' or 'analysis_summary'),
-        snippet (highlighted), and rank.
+        Uses SQLite FTS5 with BM25 ranking. Supports M010 facets
+        (content_type, min_actionability, is_sponsored) and M011
+        workflow facets (status, starred, tag, collection).
         """
+        from vidscope.application.search_videos import (  # noqa: PLC0415
+            SearchFilters, SearchVideosUseCase,
+        )
+        from vidscope.domain import ContentType, TrackingStatus  # noqa: PLC0415
+
         try:
-            use_case = SearchLibraryUseCase(
+            parsed_ct: ContentType | None = None
+            if content_type is not None:
+                try:
+                    parsed_ct = ContentType(str(content_type).lower().strip())
+                except ValueError as exc:
+                    raise ValueError(
+                        f"content_type must be a valid ContentType: {exc}"
+                    ) from exc
+
+            parsed_status: TrackingStatus | None = None
+            if status is not None:
+                try:
+                    parsed_status = TrackingStatus(str(status).lower().strip())
+                except ValueError as exc:
+                    raise ValueError(
+                        f"status must be a valid TrackingStatus: {exc}"
+                    ) from exc
+
+            filters = SearchFilters(
+                content_type=parsed_ct,
+                min_actionability=float(min_actionability) if min_actionability is not None else None,
+                is_sponsored=is_sponsored,
+                status=parsed_status,
+                starred=starred,
+                tag=tag.lower().strip() if tag else None,
+                collection=collection.strip() if collection else None,
+            )
+
+            use_case = SearchVideosUseCase(
                 unit_of_work_factory=container.unit_of_work
             )
-            result = use_case.execute(query, limit=limit)
+            result = use_case.execute(query, limit=limit, filters=filters)
         except DomainError as exc:
             raise ValueError(str(exc)) from exc
 

@@ -1,8 +1,9 @@
-"""`vidscope search <query> [--content-type TYPE] [--min-actionability N] [--sponsored BOOL]`
+"""`vidscope search <query> [--content-type TYPE] [--min-actionability N]
+[--sponsored BOOL] [--status S] [--starred/--unstarred] [--tag NAME]
+[--collection NAME]`
 
-M010: keeps the FTS5 search path intact; adds 3 facet filters that
-narrow results to videos whose latest analysis matches. All options
-use ``Annotated[...]`` per KNOWLEDGE.md.
+M010: content_type, min_actionability, is_sponsored facets.
+M011/S03: status, starred, tag, collection facets.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from rich.table import Table
 from vidscope.application.search_library import SearchLibraryResult, SearchLibraryUseCase
 from vidscope.application.search_videos import SearchFilters, SearchVideosUseCase
 from vidscope.cli._support import acquire_container, console, handle_domain_errors
-from vidscope.domain import ContentType
+from vidscope.domain import ContentType, TrackingStatus
 
 __all__ = ["search_command"]
 
@@ -28,9 +29,7 @@ def _parse_sponsored(raw: str | None) -> bool | None:
         return True
     if norm in {"false", "no", "0"}:
         return False
-    raise typer.BadParameter(
-        f"--sponsored expects true|false, got {raw!r}"
-    )
+    raise typer.BadParameter(f"--sponsored expects true|false, got {raw!r}")
 
 
 def _parse_content_type(raw: str | None) -> ContentType | None:
@@ -43,6 +42,19 @@ def _parse_content_type(raw: str | None) -> ContentType | None:
         valid = ", ".join(sorted(c.value for c in ContentType))
         raise typer.BadParameter(
             f"--content-type must be one of: {valid}. Got {raw!r}."
+        ) from exc
+
+
+def _parse_tracking_status(raw: str | None) -> TrackingStatus | None:
+    if raw is None:
+        return None
+    norm = raw.strip().lower()
+    try:
+        return TrackingStatus(norm)
+    except ValueError as exc:
+        valid = ", ".join(s.value for s in TrackingStatus)
+        raise typer.BadParameter(
+            f"--status must be one of: {valid}. Got {raw!r}."
         ) from exc
 
 
@@ -60,16 +72,31 @@ def search_command(
              "(0-100, excludes NULL).")] = None,
     sponsored: Annotated[str | None, typer.Option("--sponsored",
         help="true = only sponsored videos, false = only non-sponsored.")] = None,
+    status: Annotated[str | None, typer.Option("--status",
+        help="Workflow status: new, reviewed, saved, actioned, ignored, archived.")] = None,
+    starred: Annotated[bool | None, typer.Option(
+        "--starred/--unstarred",
+        help="Filter by starred flag (--starred or --unstarred; omit for no filter).",
+    )] = None,
+    tag: Annotated[str | None, typer.Option("--tag",
+        help="Only videos tagged with NAME (case-insensitive).")] = None,
+    collection: Annotated[str | None, typer.Option("--collection",
+        help="Only videos in collection NAME (case-sensitive).")] = None,
 ) -> None:
     """Run a full-text query through the SQLite FTS5 index."""
     with handle_domain_errors():
         parsed_ct = _parse_content_type(content_type)
         parsed_sp = _parse_sponsored(sponsored)
+        parsed_status = _parse_tracking_status(status)
 
         filters = SearchFilters(
             content_type=parsed_ct,
             min_actionability=float(min_actionability) if min_actionability is not None else None,
             is_sponsored=parsed_sp,
+            status=parsed_status,
+            starred=starred,
+            tag=tag.lower().strip() if tag else None,
+            collection=collection.strip() if collection else None,
         )
 
         container = acquire_container()
@@ -111,4 +138,12 @@ def _fmt_filters(f: SearchFilters) -> str:
         parts.append(f"min_actionability>={f.min_actionability:.0f}")
     if f.is_sponsored is not None:
         parts.append(f"sponsored={'yes' if f.is_sponsored else 'no'}")
+    if f.status is not None:
+        parts.append(f"status={f.status.value}")
+    if f.starred is not None:
+        parts.append(f"starred={'yes' if f.starred else 'no'}")
+    if f.tag is not None:
+        parts.append(f"tag={f.tag}")
+    if f.collection is not None:
+        parts.append(f"collection={f.collection}")
     return " ".join(parts) if parts else "none"
