@@ -126,7 +126,7 @@ class TestBuildMcpServer:
         server = build_mcp_server(sandboxed_container)
         assert server.name == "vidscope"
 
-    def test_server_registers_eight_tools(
+    def test_server_registers_nine_tools(
         self, sandboxed_container: Container
     ) -> None:
         server = build_mcp_server(sandboxed_container)
@@ -134,6 +134,7 @@ class TestBuildMcpServer:
         names = {tool.name for tool in tools}
         assert names == {
             "vidscope_get_creator",
+            "vidscope_get_frame_texts",
             "vidscope_ingest",
             "vidscope_list_links",
             "vidscope_search",

@@ -387,6 +387,55 @@ def build_mcp_server(container: Container) -> FastMCP:
             ],
         }
 
+    @mcp.tool()
+    def vidscope_get_frame_texts(video_id: int) -> dict[str, Any]:
+        """Return OCR-extracted on-screen text for a video's frames
+        (M008/R047).
+
+        Each entry carries the raw text, OCR confidence score, the
+        parent frame id, and its timestamp in milliseconds (joined
+        from the ``frames`` table). Results are ordered by
+        ``frame_id`` ascending then insertion order.
+
+        Returns ``{"found": False, "video_id": video_id, "frame_texts": []}``
+        when no video matches the id — never raises on a miss.
+        """
+        try:
+            use_case = ShowVideoUseCase(
+                unit_of_work_factory=container.unit_of_work
+            )
+            result = use_case.execute(video_id)
+        except DomainError as exc:
+            raise ValueError(str(exc)) from exc
+
+        if not result.found:
+            return {
+                "found": False,
+                "video_id": video_id,
+                "frame_texts": [],
+            }
+
+        # Build a frame_id → timestamp_ms lookup for the JOIN.
+        frame_ts: dict[int, int] = {}
+        for f in result.frames:
+            if f.id is not None:
+                frame_ts[int(f.id)] = int(f.timestamp_ms)
+
+        return {
+            "found": True,
+            "video_id": video_id,
+            "frame_texts": [
+                {
+                    "id": int(ft.id) if ft.id is not None else None,
+                    "frame_id": int(ft.frame_id),
+                    "text": ft.text,
+                    "confidence": float(ft.confidence),
+                    "timestamp_ms": frame_ts.get(int(ft.frame_id)),
+                }
+                for ft in result.frame_texts
+            ],
+        }
+
     # The closures above reference the use cases by name so mypy can
     # verify they exist. Silence the unused-type warning for VideoId
     # which is referenced through _video_to_dict / tool signatures but
