@@ -112,6 +112,164 @@ class TestM010Persistence:
         assert read.content_type is None
 
 
+class TestListByFilters:
+    """M010: facet filtering on the analyses table."""
+
+    def _insert_analysis(
+        self, conn, *, vid: int, content_type: str | None = None,
+        actionability: float | None = None, is_sponsored: bool | None = None,
+        created_at: datetime | None = None,
+    ) -> None:
+        conn.execute(
+            text("""
+                INSERT INTO analyses
+                (video_id, provider, language, keywords, topics,
+                 content_type, actionability, is_sponsored, created_at)
+                VALUES (:v, 'heuristic', 'en', '[]', '[]', :ct, :act, :sp, :c)
+            """),
+            {
+                "v": vid, "ct": content_type, "act": actionability,
+                "sp": 1 if is_sponsored is True else (0 if is_sponsored is False else None),
+                "c": created_at or datetime(2026, 1, 1, tzinfo=UTC),
+            },
+        )
+
+    def test_filter_by_content_type(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            v1 = _insert_video(conn, "f1")
+            v2 = _insert_video(conn, "f2")
+            self._insert_analysis(conn, vid=v1, content_type="tutorial")
+            self._insert_analysis(conn, vid=v2, content_type="review")
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            hits = repo.list_by_filters(content_type=ContentType.TUTORIAL)
+        assert v1 in [int(x) for x in hits]
+        assert v2 not in [int(x) for x in hits]
+
+    def test_filter_min_actionability_excludes_null(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            v1 = _insert_video(conn, "f3")
+            v2 = _insert_video(conn, "f4")
+            v3 = _insert_video(conn, "f5")
+            self._insert_analysis(conn, vid=v1, actionability=90.0)
+            self._insert_analysis(conn, vid=v2, actionability=50.0)
+            self._insert_analysis(conn, vid=v3, actionability=None)  # excluded
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            hits = [int(x) for x in repo.list_by_filters(min_actionability=70.0)]
+        assert v1 in hits
+        assert v2 not in hits
+        assert v3 not in hits
+
+    def test_filter_is_sponsored_true(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            v1 = _insert_video(conn, "f6")
+            v2 = _insert_video(conn, "f7")
+            v3 = _insert_video(conn, "f8")
+            self._insert_analysis(conn, vid=v1, is_sponsored=True)
+            self._insert_analysis(conn, vid=v2, is_sponsored=False)
+            self._insert_analysis(conn, vid=v3, is_sponsored=None)
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            hits = [int(x) for x in repo.list_by_filters(is_sponsored=True)]
+        assert v1 in hits
+        assert v2 not in hits
+        assert v3 not in hits
+
+    def test_filter_is_sponsored_false_excludes_null(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            v1 = _insert_video(conn, "g1")
+            v2 = _insert_video(conn, "g2")
+            v3 = _insert_video(conn, "g3")
+            self._insert_analysis(conn, vid=v1, is_sponsored=True)
+            self._insert_analysis(conn, vid=v2, is_sponsored=False)
+            self._insert_analysis(conn, vid=v3, is_sponsored=None)
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            hits = [int(x) for x in repo.list_by_filters(is_sponsored=False)]
+        assert v2 in hits
+        assert v1 not in hits
+        assert v3 not in hits
+
+    def test_combined_filters_and(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            v1 = _insert_video(conn, "h1")
+            v2 = _insert_video(conn, "h2")
+            v3 = _insert_video(conn, "h3")
+            self._insert_analysis(conn, vid=v1, content_type="tutorial",
+                                  actionability=90.0, is_sponsored=False)
+            self._insert_analysis(conn, vid=v2, content_type="tutorial",
+                                  actionability=60.0, is_sponsored=False)
+            self._insert_analysis(conn, vid=v3, content_type="review",
+                                  actionability=95.0, is_sponsored=False)
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            hits = [int(x) for x in repo.list_by_filters(
+                content_type=ContentType.TUTORIAL,
+                min_actionability=70.0,
+                is_sponsored=False,
+            )]
+        assert v1 in hits
+        assert v2 not in hits  # actionability too low
+        assert v3 not in hits  # wrong content_type
+
+    def test_no_filters_returns_all_analyzed_videos(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            v1 = _insert_video(conn, "i1")
+            v2 = _insert_video(conn, "i2")
+            _insert_video(conn, "i3_no_analysis")  # excluded -- no analyses row
+            self._insert_analysis(conn, vid=v1)
+            self._insert_analysis(conn, vid=v2)
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            hits = [int(x) for x in repo.list_by_filters()]
+        assert v1 in hits
+        assert v2 in hits
+
+    def test_latest_analysis_used(self, engine: Engine) -> None:
+        """If a video has multiple analyses, only the latest is checked."""
+        with engine.begin() as conn:
+            v1 = _insert_video(conn, "j1")
+            # Old analysis: content_type=vlog
+            self._insert_analysis(conn, vid=v1, content_type="vlog",
+                                  created_at=datetime(2025, 1, 1, tzinfo=UTC))
+            # Newer analysis: content_type=tutorial (should be the winner)
+            self._insert_analysis(conn, vid=v1, content_type="tutorial",
+                                  created_at=datetime(2026, 1, 1, tzinfo=UTC))
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            tutorials = [int(x) for x in repo.list_by_filters(content_type=ContentType.TUTORIAL)]
+            vlogs = [int(x) for x in repo.list_by_filters(content_type=ContentType.VLOG)]
+        assert v1 in tutorials
+        assert v1 not in vlogs
+
+    def test_sql_injection_attempt_safe(self, engine: Engine) -> None:
+        """ContentType enum -> controlled string; direct string injection impossible."""
+        with engine.begin() as conn:
+            _insert_video(conn, "k1")
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            # If ContentType("' OR 1=1 --") was accepted, we'd have an issue.
+            # But ContentType rejects invalid values -- test that instead.
+            import pytest as _pytest
+            with _pytest.raises(ValueError):
+                ContentType("' OR 1=1 --")
+            # And list_by_filters with a valid enum returns safely:
+            hits = repo.list_by_filters(content_type=ContentType.UNKNOWN)
+            assert isinstance(hits, list)
+
+    def test_limit_respected(self, engine: Engine) -> None:
+        with engine.begin() as conn:
+            for i in range(10):
+                vid = _insert_video(conn, f"lim{i}")
+                self._insert_analysis(conn, vid=vid, content_type="tutorial",
+                                      created_at=datetime(2026, 1, 1 + i, tzinfo=UTC))
+        with engine.connect() as conn:
+            repo = AnalysisRepositorySQLite(conn)
+            hits = repo.list_by_filters(content_type=ContentType.TUTORIAL, limit=3)
+        assert len(hits) == 3
+
+
 class TestContainerTaxonomyWiring:
     def test_container_exposes_taxonomy_catalog(self, tmp_path: Path) -> None:
         """Build a container and verify taxonomy_catalog is a TaxonomyCatalog.

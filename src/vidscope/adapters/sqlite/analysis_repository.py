@@ -58,6 +58,56 @@ class AnalysisRepositorySQLite:
         )
         return _row_to_analysis(row) if row else None
 
+    def list_by_filters(
+        self,
+        *,
+        content_type: ContentType | None = None,
+        min_actionability: float | None = None,
+        is_sponsored: bool | None = None,
+        limit: int = 1000,
+    ) -> list[VideoId]:
+        """Return video ids whose most-recent analysis matches the given filters.
+
+        Uses a GROUP BY subquery to pick the latest analysis per video_id, then
+        filters. All inputs are cast to primitive types before binding so no
+        string concatenation touches the query -- SQL injection is structurally
+        impossible.
+        """
+        from sqlalchemy import and_, func
+
+        latest_subq = (
+            select(
+                analyses_table.c.video_id.label("vid"),
+                func.max(analyses_table.c.id).label("max_id"),
+            )
+            .group_by(analyses_table.c.video_id)
+            .subquery()
+        )
+
+        stmt = (
+            select(analyses_table.c.video_id)
+            .join(latest_subq, analyses_table.c.id == latest_subq.c.max_id)
+        )
+
+        where_clauses = []
+        if content_type is not None:
+            where_clauses.append(analyses_table.c.content_type == content_type.value)
+        if min_actionability is not None:
+            where_clauses.append(analyses_table.c.actionability.is_not(None))
+            where_clauses.append(analyses_table.c.actionability >= float(min_actionability))
+        if is_sponsored is not None:
+            # Strict equality: True -> only rows with is_sponsored=1, NULL excluded.
+            where_clauses.append(analyses_table.c.is_sponsored.is_not(None))
+            where_clauses.append(analyses_table.c.is_sponsored == bool(is_sponsored))
+
+        if where_clauses:
+            stmt = stmt.where(and_(*where_clauses))
+
+        stmt = stmt.order_by(analyses_table.c.created_at.desc()).limit(max(1, int(limit)))
+
+        rows = self._conn.execute(stmt).all()
+        return [VideoId(int(row[0])) for row in rows]
+
     def _get_by_id(self, analysis_id: int) -> Analysis | None:
         row = (
             self._conn.execute(

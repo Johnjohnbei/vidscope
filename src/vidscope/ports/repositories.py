@@ -30,6 +30,7 @@ from typing import Protocol, runtime_checkable
 
 from vidscope.domain import (
     Analysis,
+    ContentType,
     Frame,
     PipelineRun,
     Platform,
@@ -151,6 +152,30 @@ class AnalysisRepository(Protocol):
     def get_latest_for_video(self, video_id: VideoId) -> Analysis | None:
         """Return the most recent analysis for ``video_id`` (useful when
         multiple providers have run) or ``None``."""
+        ...
+
+    def list_by_filters(
+        self,
+        *,
+        content_type: ContentType | None = None,
+        min_actionability: float | None = None,
+        is_sponsored: bool | None = None,
+        limit: int = 1000,
+    ) -> list[VideoId]:
+        """Return video ids whose LATEST analysis matches every non-None filter.
+
+        The match semantics:
+
+        - ``content_type``: latest analysis.content_type equals the given enum.
+          NULL stored values are excluded.
+        - ``min_actionability``: latest analysis.actionability is not NULL AND >= the given float.
+        - ``is_sponsored``: latest analysis.is_sponsored strictly equals the bool. NULL excluded.
+
+        Filters are combined with AND. Missing filters (``None``) are ignored.
+        Videos with no analysis row at all are excluded from the result.
+        ``limit`` caps the number of video ids returned (default 1000) to
+        avoid unbounded scans. Results ordered by analysis.created_at DESC.
+        """
         ...
 
 
