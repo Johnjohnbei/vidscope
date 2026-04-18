@@ -9,6 +9,7 @@ from vidscope.cli.commands.list import list_command
 from vidscope.cli.commands.mcp import mcp_app
 from vidscope.cli.commands.search import search_command
 from vidscope.cli.commands.show import show_command
+from vidscope.cli.commands.stats import refresh_stats_command
 from vidscope.cli.commands.status import status_command
 from vidscope.cli.commands.suggest import suggest_command
 from vidscope.cli.commands.watch import watch_app
@@ -19,6 +20,7 @@ __all__ = [
     "doctor_command",
     "list_command",
     "mcp_app",
+    "refresh_stats_command",
     "search_command",
     "show_command",
     "status_command",

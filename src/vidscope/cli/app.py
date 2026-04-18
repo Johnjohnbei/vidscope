@@ -22,6 +22,7 @@ from vidscope.cli.commands import (
     doctor_command,
     list_command,
     mcp_app,
+    refresh_stats_command,
     search_command,
     show_command,
     status_command,
@@ -95,3 +96,7 @@ app.command(
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(watch_app, name="watch")
 app.add_typer(cookies_app, name="cookies")
+app.command(
+    "refresh-stats",
+    help="Refresh engagement stats for a video or all ingested videos (append-only).",
+)(refresh_stats_command)
