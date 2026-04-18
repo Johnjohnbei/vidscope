@@ -35,8 +35,10 @@ from vidscope.domain.values import (
 
 __all__ = [
     "Analysis",
+    "Collection",
     "Frame",
     "PipelineRun",
+    "Tag",
     "Transcript",
     "TranscriptSegment",
     "Video",
@@ -287,3 +289,32 @@ class VideoTracking:
     id: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Tag:
+    """User tag applied to videos (M011/S02/R057).
+
+    Tags are a global namespace (no per-user scoping — R032 single-user
+    tool). ``name`` is always lowercase-stripped by the repository on
+    insert/lookup (D3 M011 RESEARCH). Uniqueness enforced at the DB
+    level by UNIQUE(name).
+    """
+
+    name: str
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Collection:
+    """User-curated collection of videos (M011/S02/R057).
+
+    Collections are named groupings (e.g. "Concurrents Shopify").
+    Unlike :class:`Tag`, collection ``name`` is case-preserved — two
+    collections with different casing are distinct rows.
+    """
+
+    name: str
+    id: int | None = None
+    created_at: datetime | None = None

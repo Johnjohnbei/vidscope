@@ -24,6 +24,7 @@ from enum import StrEnum
 from typing import NewType
 
 __all__ = [
+    "CollectionName",
     "ContentType",
     "Language",
     "Platform",
@@ -31,6 +32,7 @@ __all__ = [
     "RunStatus",
     "SentimentLabel",
     "StageName",
+    "TagName",
     "TrackingStatus",
     "VideoId",
 ]
@@ -42,6 +44,16 @@ VideoId = NewType("VideoId", int)
 PlatformId = NewType("PlatformId", str)
 """Platform-assigned stable identifier (e.g. YouTube video id, TikTok aweme
 id). Combined with :class:`Platform` it is globally unique across sources."""
+
+TagName = NewType("TagName", str)
+"""Lowercase, stripped tag name. Normalisation enforced by the
+TagRepository.get_or_create. Using NewType keeps the value distinct
+from arbitrary str at the type-checker level (D3 M011 RESEARCH)."""
+
+CollectionName = NewType("CollectionName", str)
+"""User-facing collection name. Case-preserved (D3 M011 RESEARCH) —
+unlike TagName, the DB stores "Concurrents" and "concurrents" as
+distinct rows."""
 
 
 class ContentType(StrEnum):

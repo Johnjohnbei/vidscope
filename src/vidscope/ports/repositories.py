@@ -30,6 +30,7 @@ from typing import Protocol, runtime_checkable
 
 from vidscope.domain import (
     Analysis,
+    Collection,
     ContentType,
     Frame,
     PipelineRun,
@@ -37,6 +38,7 @@ from vidscope.domain import (
     PlatformId,
     RunStatus,
     StageName,
+    Tag,
     TrackingStatus,
     Transcript,
     Video,
@@ -49,8 +51,10 @@ from vidscope.domain import (
 
 __all__ = [
     "AnalysisRepository",
+    "CollectionRepository",
     "FrameRepository",
     "PipelineRunRepository",
+    "TagRepository",
     "TranscriptRepository",
     "VideoRepository",
     "VideoStatsRepository",
@@ -437,5 +441,98 @@ class VideoTrackingRepository(Protocol):
         """Return every tracking row with ``starred=True``.
 
         Ordered by ``updated_at DESC``. Capped at ``limit`` (default 1000).
+        """
+        ...
+
+
+@runtime_checkable
+class TagRepository(Protocol):
+    """Persistence for :class:`Tag` rows + many-to-many ``tag_assignments``.
+
+    Tag names are normalised to lowercase-stripped in this layer
+    (D3 M011 RESEARCH). UNIQUE(name) at DB level prevents duplicates.
+    """
+
+    def get_or_create(self, name: str) -> Tag:
+        """Return the :class:`Tag` row for ``name`` (lowercased, stripped).
+
+        Creates the row if it does not exist. Raises ``StorageError`` if
+        ``name`` is empty after stripping.
+        """
+        ...
+
+    def get_by_name(self, name: str) -> Tag | None:
+        """Return the :class:`Tag` matching ``name`` (lowercased) or ``None``."""
+        ...
+
+    def list_all(self, *, limit: int = 1000) -> list[Tag]:
+        """Return every tag ordered by ``name`` ascending."""
+        ...
+
+    def list_for_video(self, video_id: VideoId) -> list[Tag]:
+        """Return tags assigned to ``video_id``, ordered by name ascending."""
+        ...
+
+    def assign(self, video_id: VideoId, tag_id: int) -> None:
+        """Assign ``tag_id`` to ``video_id``. Idempotent — re-assigning is a no-op."""
+        ...
+
+    def unassign(self, video_id: VideoId, tag_id: int) -> None:
+        """Remove the assignment if present. No-op if absent."""
+        ...
+
+    def list_video_ids_for_tag(
+        self, name: str, *, limit: int = 1000
+    ) -> list[VideoId]:
+        """Return every video_id tagged with ``name`` (lowercased).
+
+        Used by :class:`SearchVideosUseCase` in S03 to compute the tag
+        facet intersection set.
+        """
+        ...
+
+
+@runtime_checkable
+class CollectionRepository(Protocol):
+    """Persistence for :class:`Collection` + many-to-many ``collection_items``."""
+
+    def create(self, name: str) -> Collection:
+        """Create a new collection. Raises ``StorageError`` if the name
+        already exists (UNIQUE violation). Name is case-preserved (D3)."""
+        ...
+
+    def get_by_name(self, name: str) -> Collection | None:
+        """Return the :class:`Collection` matching ``name`` exactly or ``None``."""
+        ...
+
+    def list_all(self, *, limit: int = 1000) -> list[Collection]:
+        """Return every collection ordered by ``name`` ascending."""
+        ...
+
+    def add_video(self, collection_id: int, video_id: VideoId) -> None:
+        """Add ``video_id`` to the collection. Idempotent — re-adding is a no-op."""
+        ...
+
+    def remove_video(self, collection_id: int, video_id: VideoId) -> None:
+        """Remove the membership if present. No-op if absent."""
+        ...
+
+    def list_videos(
+        self, collection_id: int, *, limit: int = 1000
+    ) -> list[VideoId]:
+        """Return video_ids in the collection, ordered by membership
+        created_at descending (most-recently-added first)."""
+        ...
+
+    def list_collections_for_video(self, video_id: VideoId) -> list[Collection]:
+        """Return collections containing ``video_id`` ordered by name asc."""
+        ...
+
+    def list_video_ids_for_collection(
+        self, name: str, *, limit: int = 1000
+    ) -> list[VideoId]:
+        """Return every video_id in the collection named ``name``.
+
+        Used by :class:`SearchVideosUseCase` in S03 for the collection facet.
         """
         ...

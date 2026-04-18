@@ -33,8 +33,10 @@ from vidscope.ports.pipeline import (
 )
 from vidscope.ports.repositories import (
     AnalysisRepository,
+    CollectionRepository,
     FrameRepository,
     PipelineRunRepository,
+    TagRepository,
     TranscriptRepository,
     VideoRepository,
     VideoStatsRepository,
@@ -52,6 +54,7 @@ __all__ = [
     "Analyzer",
     "ChannelEntry",
     "Clock",
+    "CollectionRepository",
     "Downloader",
     "FrameExtractor",
     "FrameRepository",
@@ -66,6 +69,7 @@ __all__ = [
     "Stage",
     "StageResult",
     "StatsProbe",
+    "TagRepository",
     "TaxonomyCatalog",
     "Transcriber",
     "TranscriptRepository",

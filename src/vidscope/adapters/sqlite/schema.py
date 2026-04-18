@@ -55,10 +55,14 @@ from sqlalchemy.engine import Connection
 
 __all__ = [
     "analyses",
+    "collection_items",
+    "collections",
     "frames",
     "init_db",
     "metadata",
     "pipeline_runs",
+    "tag_assignments",
+    "tags",
     "transcripts",
     "video_stats",
     "video_tracking",
@@ -251,6 +255,67 @@ video_stats = Table(
 )
 
 
+# M011/S02: tag namespace + many-to-many tag_assignments.
+tags = Table(
+    "tags",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(128), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    UniqueConstraint("name", name="uq_tags_name"),
+)
+
+tag_assignments = Table(
+    "tag_assignments",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "video_id",
+        Integer,
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "tag_id",
+        Integer,
+        ForeignKey("tags.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    UniqueConstraint("video_id", "tag_id", name="uq_tag_assignments_video_tag"),
+)
+
+# M011/S02: user-curated collections + many-to-many collection_items.
+collections = Table(
+    "collections",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", String(255), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    UniqueConstraint("name", name="uq_collections_name"),
+)
+
+collection_items = Table(
+    "collection_items",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "collection_id",
+        Integer,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "video_id",
+        Integer,
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    UniqueConstraint("collection_id", "video_id", name="uq_collection_items_coll_video"),
+)
+
+
 # ---------------------------------------------------------------------------
 # FTS5 virtual table DDL
 # ---------------------------------------------------------------------------
@@ -283,6 +348,9 @@ def init_db(engine: Engine) -> None:
 
     M010: calls :func:`_ensure_analysis_v2_columns` so that pre-M010
     databases gain the 9 new nullable columns on the ``analyses`` table.
+
+    M011/S02: calls :func:`_ensure_tags_collections_tables` so that pre-S02
+    databases gain tags, tag_assignments, collections, collection_items.
     """
     metadata.create_all(engine)
     with engine.begin() as conn:
@@ -291,6 +359,7 @@ def init_db(engine: Engine) -> None:
         _ensure_video_stats_indexes(conn)
         _ensure_analysis_v2_columns(conn)
         _ensure_video_tracking_table(conn)  # M011/S01
+        _ensure_tags_collections_tables(conn)  # M011/S02
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -450,6 +519,106 @@ def _ensure_video_tracking_table(conn: Connection) -> None:
         text(
             "CREATE INDEX IF NOT EXISTS idx_video_tracking_starred "
             "ON video_tracking (starred)"
+        )
+    )
+
+
+def _ensure_tags_collections_tables(conn: Connection) -> None:
+    """M011/S02 migration: create tags + tag_assignments + collections +
+    collection_items if absent. Idempotent.
+
+    Created in strict order (Pitfall 2): tags, tag_assignments,
+    collections, collection_items. Order matters because
+    tag_assignments and collection_items have FKs to the preceding tables.
+    """
+    existing = {
+        row[0]
+        for row in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        )
+    }
+
+    if "tags" not in existing:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE tags (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name       VARCHAR(128) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    CONSTRAINT uq_tags_name UNIQUE (name)
+                )
+                """
+            )
+        )
+
+    if "tag_assignments" not in existing:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE tag_assignments (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    video_id   INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                    tag_id     INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+                    created_at DATETIME NOT NULL,
+                    CONSTRAINT uq_tag_assignments_video_tag UNIQUE (video_id, tag_id)
+                )
+                """
+            )
+        )
+
+    if "collections" not in existing:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE collections (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name       VARCHAR(255) NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    CONSTRAINT uq_collections_name UNIQUE (name)
+                )
+                """
+            )
+        )
+
+    if "collection_items" not in existing:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE collection_items (
+                    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+                    video_id      INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                    created_at    DATETIME NOT NULL,
+                    CONSTRAINT uq_collection_items_coll_video UNIQUE (collection_id, video_id)
+                )
+                """
+            )
+        )
+
+    # Indexes (idempotent via IF NOT EXISTS)
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_tag_assignments_video_id "
+            "ON tag_assignments (video_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_tag_assignments_tag_id "
+            "ON tag_assignments (tag_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_collection_items_collection_id "
+            "ON collection_items (collection_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_collection_items_video_id "
+            "ON collection_items (video_id)"
         )
     )
 

@@ -12,8 +12,10 @@ from __future__ import annotations
 
 from vidscope.domain.entities import (
     Analysis,
+    Collection,
     Frame,
     PipelineRun,
+    Tag,
     Transcript,
     TranscriptSegment,
     Video,
@@ -36,6 +38,7 @@ from vidscope.domain.errors import (
 )
 from vidscope.domain.platform_detection import detect_platform
 from vidscope.domain.values import (
+    CollectionName,
     ContentType,
     Language,
     Platform,
@@ -43,6 +46,7 @@ from vidscope.domain.values import (
     RunStatus,
     SentimentLabel,
     StageName,
+    TagName,
     TrackingStatus,
     VideoId,
 )
@@ -50,8 +54,10 @@ from vidscope.domain.values import (
 __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values / helpers), not alphabetized
     # entities
     "Analysis",
+    "Collection",
     "Frame",
     "PipelineRun",
+    "Tag",
     "Transcript",
     "TranscriptSegment",
     "Video",
@@ -71,6 +77,7 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "StorageError",
     "TranscriptionError",
     # values
+    "CollectionName",
     "ContentType",
     "Language",
     "Platform",
@@ -78,6 +85,7 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "RunStatus",
     "SentimentLabel",
     "StageName",
+    "TagName",
     "TrackingStatus",
     "VideoId",
     # helpers

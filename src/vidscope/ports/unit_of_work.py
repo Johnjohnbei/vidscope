@@ -30,8 +30,10 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from vidscope.ports.repositories import (
     AnalysisRepository,
+    CollectionRepository,
     FrameRepository,
     PipelineRunRepository,
+    TagRepository,
     TranscriptRepository,
     VideoRepository,
     VideoStatsRepository,
@@ -69,6 +71,8 @@ class UnitOfWork(Protocol):
     watch_refreshes: WatchRefreshRepository
     video_stats: VideoStatsRepository
     video_tracking: VideoTrackingRepository
+    tags: TagRepository
+    collections: CollectionRepository
 
     def __enter__(self) -> UnitOfWork:
         ...
