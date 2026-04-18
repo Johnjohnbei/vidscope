@@ -1,11 +1,17 @@
-"""`vidscope show <id>` — show the full record for a video id."""
+"""`vidscope show <id>` — show the full record for a video id.
+
+D-05 (M009/S04): extended with a Stats section that displays the latest
+captured engagement counters and the computed views_velocity_24h. When no
+stats have been captured yet, an actionable message points the user to the
+correct remediation command.
+"""
 
 from __future__ import annotations
 
 import typer
 from rich.panel import Panel
 
-from vidscope.application.show_video import ShowVideoUseCase
+from vidscope.application.show_video import ShowVideoResult, ShowVideoUseCase
 from vidscope.cli._support import (
     acquire_container,
     console,
@@ -68,3 +74,40 @@ def show_command(
             )
         else:
             console.print("[dim]analysis: none yet[/dim]")
+
+        _render_stats(result, video_id)
+
+
+def _render_stats(result: ShowVideoResult, video_id: int) -> None:
+    """D-05: display latest stats snapshot + computed velocity.
+
+    If no stats row exists, print an actionable message pointing at
+    `vidscope refresh-stats <id>`. ASCII-only output (no Unicode glyphs).
+    """
+    if result.latest_stats is None:
+        console.print(
+            "[dim]Stats:[/dim] "
+            f"Aucune stat capturee - lancez: vidscope refresh-stats {video_id}"
+        )
+        return
+
+    s = result.latest_stats
+    parts = [
+        f"captured_at={s.captured_at.strftime('%Y-%m-%d %H:%M')}",
+        f"views={s.view_count if s.view_count is not None else '-'}",
+        f"likes={s.like_count if s.like_count is not None else '-'}",
+        f"reposts={s.repost_count if s.repost_count is not None else '-'}",
+        f"comments={s.comment_count if s.comment_count is not None else '-'}",
+        f"saves={s.save_count if s.save_count is not None else '-'}",
+    ]
+    console.print("[bold]Stats[/bold]: " + "  ".join(parts))
+
+    if result.views_velocity_24h is not None:
+        console.print(
+            f"  velocity_24h: {result.views_velocity_24h:.1f} views/hour"
+        )
+    else:
+        console.print(
+            f"  velocity_24h: n/a (need >= 2 snapshots - "
+            f"run vidscope refresh-stats {video_id} again)"
+        )
