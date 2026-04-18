@@ -254,10 +254,13 @@ This file is the explicit capability and coverage contract for the project.
 | R030 | anti-feature | out-of-scope | none | none | n/a |
 | R031 | anti-feature | out-of-scope | none | none | n/a |
 | R032 | constraint | out-of-scope | none | none | n/a |
+| R050 | time-series-stats | validated | M009 | M009/S01 | video_stats table append-only (UNIQUE video_id+captured_at), VideoStats entity (5 int|None counters), metrics.views_velocity_24h + engagement_rate, YtdlpStatsProbe (download=False), VideoStatsRepositorySQLite.append (ON CONFLICT DO NOTHING), Container.stats_probe, UoW.video_stats. Hypothesis property gate: 13 tests (monotonicity, additivity, edge windows). |
+| R051 | refresh-stats | validated | M009 | M009/S02, M009/S03 | StatsStage standalone (is_satisfied=False, not in add pipeline). RefreshStatsUseCase: execute_one(video_id) + execute_all(since, limit>=1). vidscope refresh-stats <id|--all> [--since Nd] [--limit M]. RefreshStatsForWatchlistUseCase iterates watchlist accounts→videos with per-creator+per-video error isolation. vidscope watch refresh extended: combined summary reports new_videos + stats_refreshed. RefreshWatchlistUseCase M003 unchanged. |
+| R052 | trending | validated | M009 | M009/S04 | ListTrendingUseCase with SQL shortlist (rank_candidates_by_delta, LIMIT pushed to DB — D-04). vidscope trending --since <window> (mandatory, no silent default). Filters: --platform, --min-velocity, --limit (min=1). Ranks by views_velocity_24h descending. vidscope_trending MCP tool (7th tool, JSON-serializable). vidscope show <id> stats section: last capture counts + velocity, or actionable message if 0 rows (D-05). 9/9 import-linter contracts green. |
 
 ## Coverage Summary
 
 - Active requirements: 12
 - Mapped to slices: 12
-- Validated: 4 (R021, R022, R024, R025)
+- Validated: 7 (R021, R022, R024, R025, R050, R051, R052)
 - Unmapped active requirements: 0
