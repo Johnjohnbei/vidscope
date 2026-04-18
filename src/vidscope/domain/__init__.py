@@ -35,10 +35,12 @@ from vidscope.domain.errors import (
 )
 from vidscope.domain.platform_detection import detect_platform
 from vidscope.domain.values import (
+    ContentType,
     Language,
     Platform,
     PlatformId,
     RunStatus,
+    SentimentLabel,
     StageName,
     VideoId,
 )
@@ -66,10 +68,12 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "StorageError",
     "TranscriptionError",
     # values
+    "ContentType",
     "Language",
     "Platform",
     "PlatformId",
     "RunStatus",
+    "SentimentLabel",
     "StageName",
     "VideoId",
     # helpers

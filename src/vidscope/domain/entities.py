@@ -22,10 +22,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from vidscope.domain.values import (
+    ContentType,
     Language,
     Platform,
     PlatformId,
     RunStatus,
+    SentimentLabel,
     StageName,
     VideoId,
 )
@@ -118,15 +120,32 @@ class Frame:
 
 @dataclass(frozen=True, slots=True)
 class Analysis:
-    """Qualitative analysis produced by an analyzer provider."""
+    """Qualitative analysis produced by an analyzer provider.
+
+    M010 extension: adds a score vector (5 dimensions), sentiment label,
+    sponsor flag, structural content type, controlled-vocabulary verticals,
+    and a natural-language reasoning field. All new fields default to
+    ``None`` / ``()`` so analyses produced before M010 remain valid (D032
+    additive migration).
+    """
 
     video_id: VideoId
     provider: str
     language: Language
     keywords: tuple[str, ...] = ()
-    topics: tuple[str, ...] = ()
-    score: float | None = None
+    topics: tuple[str, ...] = ()            # freeform, preserved for compat (M001-M009)
+    score: float | None = None              # overall score preserved (D032)
     summary: str | None = None
+    # --- M010 additive fields (R053, R054, R055) ---
+    verticals: tuple[str, ...] = ()                  # R054 controlled taxonomy slugs
+    information_density: float | None = None         # R053 score vector — [0, 100]
+    actionability: float | None = None               # R053 score vector — [0, 100]
+    novelty: float | None = None                     # R053 score vector — [0, 100]
+    production_quality: float | None = None          # R053 score vector — [0, 100]
+    sentiment: SentimentLabel | None = None          # R053 sentiment label
+    is_sponsored: bool | None = None                 # R053 sponsor flag (None = unknown)
+    content_type: ContentType | None = None          # R053 structural content type
+    reasoning: str | None = None                     # R055 2-3 sentence explanation
     id: int | None = None
     created_at: datetime | None = None
 

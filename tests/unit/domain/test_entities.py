@@ -302,3 +302,136 @@ class TestVideoStats:
         assert stats.view_count == 500
         assert stats.like_count is None
         assert stats.repost_count is None
+
+
+class TestAnalysisM010Extension:
+    def test_construct_with_all_defaults(self) -> None:
+        a = Analysis(
+            video_id=VideoId(1),
+            provider="heuristic",
+            language=Language.ENGLISH,
+        )
+        assert a.verticals == ()
+        assert a.information_density is None
+        assert a.actionability is None
+        assert a.novelty is None
+        assert a.production_quality is None
+        assert a.sentiment is None
+        assert a.is_sponsored is None
+        assert a.content_type is None
+        assert a.reasoning is None
+
+    def test_construct_with_all_m010_fields(self) -> None:
+        from vidscope.domain import ContentType, SentimentLabel
+
+        a = Analysis(
+            video_id=VideoId(1),
+            provider="heuristic",
+            language=Language.ENGLISH,
+            verticals=("tech", "ai"),
+            information_density=72.5,
+            actionability=80.0,
+            novelty=40.0,
+            production_quality=65.0,
+            sentiment=SentimentLabel.POSITIVE,
+            is_sponsored=False,
+            content_type=ContentType.TUTORIAL,
+            reasoning="Clear step-by-step tutorial with concrete examples.",
+        )
+        assert a.verticals == ("tech", "ai")
+        assert a.information_density == 72.5
+        assert a.sentiment is SentimentLabel.POSITIVE
+        assert a.content_type is ContentType.TUTORIAL
+        assert a.is_sponsored is False  # explicitly False != None
+        assert "step-by-step" in (a.reasoning or "")
+
+    def test_frozen_prevents_mutation(self) -> None:
+        import dataclasses
+
+        a = Analysis(
+            video_id=VideoId(1),
+            provider="heuristic",
+            language=Language.ENGLISH,
+        )
+        with pytest.raises(dataclasses.FrozenInstanceError):
+            a.reasoning = "nope"  # type: ignore[misc]
+
+    def test_slots_prevents_new_attributes(self) -> None:
+        import dataclasses
+
+        a = Analysis(
+            video_id=VideoId(1),
+            provider="heuristic",
+            language=Language.ENGLISH,
+        )
+        # slots=True prevents __dict__; frozen=True also blocks attribute
+        # mutation. Depending on Python version the raised exception type
+        # may be AttributeError, FrozenInstanceError, or TypeError.
+        with pytest.raises((AttributeError, dataclasses.FrozenInstanceError, TypeError)):
+            a.bogus_field = "x"  # type: ignore[attr-defined]
+
+    def test_has_summary_still_works(self) -> None:
+        a = Analysis(
+            video_id=VideoId(1),
+            provider="heuristic",
+            language=Language.ENGLISH,
+            summary="something",
+        )
+        assert a.has_summary() is True
+
+    def test_is_sponsored_none_vs_false_distinct(self) -> None:
+        unknown = Analysis(
+            video_id=VideoId(1), provider="heuristic", language=Language.ENGLISH,
+        )
+        explicit_false = Analysis(
+            video_id=VideoId(1), provider="heuristic",
+            language=Language.ENGLISH, is_sponsored=False,
+        )
+        assert unknown.is_sponsored is None
+        assert explicit_false.is_sponsored is False
+        assert unknown.is_sponsored != explicit_false.is_sponsored
+
+
+class TestContentTypeEnum:
+    def test_contains_expected_members(self) -> None:
+        from vidscope.domain import ContentType
+
+        expected_values = {
+            "tutorial", "review", "vlog", "news", "story",
+            "opinion", "comedy", "educational", "promo", "unknown",
+        }
+        assert expected_values.issubset({c.value for c in ContentType})
+
+    def test_is_strenum_serialises_to_str(self) -> None:
+        from vidscope.domain import ContentType
+
+        assert str(ContentType.TUTORIAL) == "tutorial"
+        assert ContentType.TUTORIAL == "tutorial"
+
+    def test_construction_from_string(self) -> None:
+        from vidscope.domain import ContentType
+
+        assert ContentType("tutorial") is ContentType.TUTORIAL
+
+
+class TestSentimentLabelEnum:
+    def test_contains_exactly_four_labels(self) -> None:
+        from vidscope.domain import SentimentLabel
+
+        assert {s.value for s in SentimentLabel} == {
+            "positive", "negative", "neutral", "mixed",
+        }
+
+    def test_invalid_label_raises(self) -> None:
+        from vidscope.domain import SentimentLabel
+
+        with pytest.raises(ValueError):
+            SentimentLabel("joyful")
+
+
+class TestPyyamlAvailable:
+    """Ensure pyyaml is a direct dependency (not just transitive)."""
+
+    def test_yaml_importable(self) -> None:
+        import yaml  # noqa: PLC0415
+        assert hasattr(yaml, "safe_load")

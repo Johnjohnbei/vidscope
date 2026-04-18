@@ -27,6 +27,7 @@ dependencies = [
     "httpx>=0.28,<1",
     "mcp>=1.27,<2",
     "platformdirs>=4.9,<5",
+    "pyyaml>=6.0,<7",
     "rich>=14.0,<15",
     "sqlalchemy>=2.0,<3",
     "typer>=0.20,<1",

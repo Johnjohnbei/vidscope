@@ -24,10 +24,12 @@ from enum import StrEnum
 from typing import NewType
 
 __all__ = [
+    "ContentType",
     "Language",
     "Platform",
     "PlatformId",
     "RunStatus",
+    "SentimentLabel",
     "StageName",
     "VideoId",
 ]
@@ -39,6 +41,38 @@ VideoId = NewType("VideoId", int)
 PlatformId = NewType("PlatformId", str)
 """Platform-assigned stable identifier (e.g. YouTube video id, TikTok aweme
 id). Combined with :class:`Platform` it is globally unique across sources."""
+
+
+class ContentType(StrEnum):
+    """Structural content type of a short-form video.
+
+    Assigned by the analyzer layer (M010). UNKNOWN is a legitimate
+    default — callers must not treat ``None`` and UNKNOWN as the same:
+    ``None`` = pre-M010 analysis, ``UNKNOWN`` = M010 analyzer could not
+    decide between the typed options.
+    """
+
+    TUTORIAL = "tutorial"
+    REVIEW = "review"
+    VLOG = "vlog"
+    NEWS = "news"
+    STORY = "story"
+    OPINION = "opinion"
+    COMEDY = "comedy"
+    EDUCATIONAL = "educational"
+    PROMO = "promo"
+    UNKNOWN = "unknown"
+
+
+class SentimentLabel(StrEnum):
+    """Whole-video sentiment label (not per-sentence — explicitly out of
+    scope per M010 ROADMAP).
+    """
+
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+    MIXED = "mixed"
 
 
 class Platform(StrEnum):
