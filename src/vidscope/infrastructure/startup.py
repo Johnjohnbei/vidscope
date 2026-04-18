@@ -37,7 +37,6 @@ __all__ = [
     "check_cookies",
     "check_ffmpeg",
     "check_mcp_sdk",
-    "check_vision",
     "check_ytdlp",
     "run_all_checks",
 ]
@@ -109,14 +108,6 @@ _ANALYZER_REMEDIATION: Final = (
     "openrouter, openai, anthropic. For LLM providers, also set the "
     "matching VIDSCOPE_<PROVIDER>_API_KEY env var. See "
     "`docs/analyzers.md` for the full list and signup URLs."
-)
-
-_VISION_OPTIONAL_REMEDIATION: Final = (
-    "Vision OCR + face-count are optional (M008). If you want to "
-    "extract on-screen text and classify content shape, install the "
-    "extra: `uv sync --extra vision`. Without it, the visual_intelligence "
-    "pipeline stage emits SKIPPED and the rest of the pipeline is "
-    "unaffected."
 )
 
 
@@ -380,66 +371,6 @@ def check_analyzer() -> CheckResult:
     )
 
 
-def check_vision() -> CheckResult:
-    """Return a :class:`CheckResult` for the optional vision extra.
-
-    States:
-
-    1. **Both installed**: ``ok=True``, version_or_error reports both
-       module versions.
-    2. **Neither installed**: ``ok=True`` (optional), version_or_error
-       says "not installed (optional)".
-    3. **Partial install** (one present, other missing): ``ok=False``,
-       names the missing package.
-
-    The vision extra is optional — its absence is a healthy state.
-    Only a BROKEN install (one half present, the other missing)
-    warrants ``ok=False``.
-    """
-    from importlib.util import find_spec  # noqa: PLC0415
-
-    has_rapidocr = find_spec("rapidocr_onnxruntime") is not None
-    has_cv2 = find_spec("cv2") is not None
-
-    if not has_rapidocr and not has_cv2:
-        return CheckResult(
-            name="vision",
-            ok=True,
-            version_or_error="not installed (optional)",
-            remediation=_VISION_OPTIONAL_REMEDIATION,
-        )
-    if has_rapidocr and has_cv2:
-        try:
-            from importlib.metadata import version  # noqa: PLC0415
-            rapidocr_v = version("rapidocr-onnxruntime")
-        except Exception:  # noqa: BLE001
-            rapidocr_v = "unknown"
-        try:
-            from importlib.metadata import version  # noqa: PLC0415
-            cv2_v = version("opencv-python-headless")
-        except Exception:  # noqa: BLE001
-            cv2_v = "unknown"
-        return CheckResult(
-            name="vision",
-            ok=True,
-            version_or_error=(
-                f"rapidocr-onnxruntime={rapidocr_v}, "
-                f"opencv-python-headless={cv2_v}"
-            ),
-            remediation="",
-        )
-    # Partial install.
-    missing = (
-        "opencv-python-headless" if has_rapidocr else "rapidocr-onnxruntime"
-    )
-    return CheckResult(
-        name="vision",
-        ok=False,
-        version_or_error=f"partial install: {missing} missing",
-        remediation=_VISION_OPTIONAL_REMEDIATION,
-    )
-
-
 def run_all_checks() -> list[CheckResult]:
     """Run every startup check and return the results.
 
@@ -452,5 +383,4 @@ def run_all_checks() -> list[CheckResult]:
         check_mcp_sdk(),
         check_cookies(),
         check_analyzer(),
-        check_vision(),
     ]

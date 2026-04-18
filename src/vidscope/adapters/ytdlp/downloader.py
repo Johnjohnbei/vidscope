@@ -37,28 +37,14 @@ Design notes
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any, Final
 
 import yt_dlp
 from yt_dlp.utils import DownloadError, ExtractorError
 
-from vidscope.domain import (
-    CookieAuthError,
-    IngestError,
-    Mention,
-    Platform,
-    PlatformId,
-    VideoId,
-)
-from vidscope.ports import (
-    ChannelEntry,
-    CreatorInfo,
-    IngestOutcome,
-    ProbeResult,
-    ProbeStatus,
-)
+from vidscope.domain import CookieAuthError, IngestError, Platform, PlatformId
+from vidscope.ports import ChannelEntry, IngestOutcome, ProbeResult, ProbeStatus
 
 __all__ = ["YtdlpDownloader"]
 
@@ -302,7 +288,9 @@ class YtdlpDownloader:
         try:
             with yt_dlp.YoutubeDL(options) as ydl:
                 info = ydl.extract_info(url, download=False)
-        except (DownloadError, ExtractorError) as exc:
+        except DownloadError as exc:
+            return _translate_probe_error(exc, url)
+        except ExtractorError as exc:
             return _translate_probe_error(exc, url)
         except Exception as exc:
             return ProbeResult(
@@ -311,41 +299,19 @@ class YtdlpDownloader:
                 detail=f"unexpected yt-dlp failure: {exc}",
             )
 
-        if info is None or not isinstance(info, dict):
-            # None → yt-dlp found nothing; non-dict → unexpected extractor shape.
-            # Both cases map to NOT_FOUND (no usable metadata available).
+        if info is None:
             return ProbeResult(
                 status=ProbeStatus.NOT_FOUND,
                 url=url,
                 detail="yt-dlp returned no metadata",
             )
 
-        title = info.get("title")
-        uploader = _str_or_none(info.get("uploader") or info.get("channel"))
-        uploader_id = _str_or_none(
-            info.get("uploader_id") or info.get("channel_id")
-        )
-        uploader_url = _str_or_none(
-            info.get("uploader_url") or info.get("channel_url")
-        )
-        channel_follower_count = _int_or_none(
-            info.get("channel_follower_count")
-            or info.get("channel_followers")
-        )
-        uploader_thumbnail = _extract_uploader_thumbnail(info)
-        uploader_verified = _extract_uploader_verified(info)
-
+        title = info.get("title") if isinstance(info, dict) else None
         return ProbeResult(
             status=ProbeStatus.OK,
             url=url,
             detail=f"resolved: {title or info.get('id', '?')}",
             title=title if isinstance(title, str) else None,
-            uploader=uploader,
-            uploader_id=uploader_id,
-            uploader_url=uploader_url,
-            channel_follower_count=channel_follower_count,
-            uploader_thumbnail=uploader_thumbnail,
-            uploader_verified=uploader_verified,
         )
 
     # ------------------------------------------------------------------
@@ -417,7 +383,6 @@ def _info_to_outcome(
             retryable=False,
         )
 
-    description = _str_or_none(info.get("description"))
     return IngestOutcome(
         platform=platform,
         platform_id=platform_id,
@@ -428,12 +393,6 @@ def _info_to_outcome(
         duration=_float_or_none(info.get("duration")),
         upload_date=_str_or_none(info.get("upload_date")),
         view_count=_int_or_none(info.get("view_count")),
-        creator_info=_extract_creator_info(info),
-        description=description,
-        hashtags=_extract_hashtags(info),
-        mentions=_extract_mentions(description, platform),
-        music_track=_str_or_none(info.get("track")),
-        music_artist=_extract_music_artist(info),
     )
 
 
@@ -614,148 +573,3 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-
-
-def _extract_creator_info(info: dict[str, Any]) -> CreatorInfo | None:
-    """Extract creator metadata from a yt-dlp ``info_dict``.
-
-    Returns ``None`` when no stable creator id is available — D-02:
-    ingest must still succeed on compilations, playlists without a
-    single uploader, and extractors that don't expose one. A caller
-    (``IngestStage``) treats ``None`` as "skip creator upsert, save
-    video with creator_id=NULL, log a WARNING".
-
-    Zero network calls — pure dict access on the already-extracted
-    ``info_dict``.
-    """
-    platform_user_id = _str_or_none(
-        info.get("uploader_id") or info.get("channel_id")
-    )
-    if platform_user_id is None:
-        return None
-
-    uploader = _str_or_none(info.get("uploader") or info.get("channel"))
-    return CreatorInfo(
-        platform_user_id=platform_user_id,
-        handle=uploader,
-        display_name=uploader,
-        profile_url=_str_or_none(
-            info.get("uploader_url") or info.get("channel_url")
-        ),
-        avatar_url=_extract_uploader_thumbnail(info),
-        follower_count=_int_or_none(
-            info.get("channel_follower_count")
-            or info.get("channel_followers")
-        ),
-        is_verified=_extract_uploader_verified(info),
-    )
-
-
-# Pattern matches "@" followed by a word-character run that may contain
-# dots or underscores (max 64 chars total). Simple bounded pattern —
-# no nested quantifiers — safe against ReDoS (T-S03P01-02).
-_MENTION_PATTERN = re.compile(r"@([\w][\w.]{0,63})")
-
-
-def _extract_mentions(
-    description: str | None, platform: Platform
-) -> tuple[Mention, ...]:
-    """Extract ``@handle`` mentions from a video description.
-
-    Handles are returned raw (the repository layer canonicalises
-    lowercase). Returns ``()`` for falsy input. Deduplicates by
-    lowercased handle. Every :class:`Mention` carries
-    ``video_id=VideoId(0)`` as a placeholder — :class:`IngestStage`
-    replaces it with the persisted video id before writing.
-    """
-    _ = platform  # platform parameter reserved for future use
-    if not description:
-        return ()
-
-    seen: set[str] = set()
-    mentions: list[Mention] = []
-    for match in _MENTION_PATTERN.finditer(description):
-        handle = match.group(1)
-        key = handle.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        mentions.append(
-            Mention(
-                video_id=VideoId(0),
-                handle=handle,
-                platform=None,
-            )
-        )
-    return tuple(mentions)
-
-
-def _extract_hashtags(info: dict[str, Any]) -> tuple[str, ...]:
-    """Extract hashtags from a yt-dlp ``info_dict``.
-
-    yt-dlp exposes hashtags as ``info["tags"]`` — a list of bare
-    strings. The list may be missing, ``None``, or contain non-string
-    entries on pathological platforms: we coerce to ``tuple[str, ...]``
-    and drop falsy entries. The repository layer canonicalises
-    (lowercase + lstrip '#') — this helper preserves whatever yt-dlp
-    returned verbatim.
-    """
-    raw = info.get("tags")
-    if not raw or not isinstance(raw, list):
-        return ()
-    cleaned = [str(t).strip() for t in raw if t]
-    return tuple(t for t in cleaned if t)
-
-
-def _extract_music_artist(info: dict[str, Any]) -> str | None:
-    """Resolve the music artist from a yt-dlp ``info_dict``.
-
-    Preference order (per RESEARCH §A1, Q-03):
-    1. ``info["artists"]`` (list) — first entry only in M007.
-    2. ``info["artist"]`` (deprecated singular) — fallback.
-
-    Returns ``None`` when the platform exposes neither.
-    """
-    artists = info.get("artists")
-    if isinstance(artists, list) and artists:
-        first = artists[0]
-        if first is not None:
-            text = str(first).strip()
-            if text:
-                return text
-    return _str_or_none(info.get("artist"))
-
-
-def _extract_uploader_thumbnail(info: dict[str, Any]) -> str | None:
-    """Resolve the creator avatar URL from a yt-dlp info_dict.
-
-    yt-dlp exposes avatars under several keys depending on the
-    extractor: ``uploader_thumbnail`` (sometimes a URL string,
-    sometimes a list of {url, ...} dicts), ``channel_thumbnail``
-    (YouTube), or inside the general ``thumbnails`` list filtered
-    by author context (rare). Preference order is
-    explicit-single → list-first → None.
-    """
-    candidate = info.get("uploader_thumbnail") or info.get("channel_thumbnail")
-    if isinstance(candidate, str):
-        return _str_or_none(candidate)
-    if isinstance(candidate, list) and candidate:
-        first = candidate[0]
-        if isinstance(first, dict):
-            return _str_or_none(first.get("url"))
-        if isinstance(first, str):
-            return _str_or_none(first)
-    return None
-
-
-def _extract_uploader_verified(info: dict[str, Any]) -> bool | None:
-    """Resolve the verified-badge flag from a yt-dlp info_dict.
-
-    Exposed inconsistently across extractors; ``None`` is a legit
-    outcome. Tried keys: ``channel_verified``, ``uploader_verified``.
-    """
-    for key in ("channel_verified", "uploader_verified"):
-        value = info.get(key)
-        if isinstance(value, bool):
-            return value
-    return None

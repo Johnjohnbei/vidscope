@@ -13,10 +13,9 @@ from typing import Any, cast
 from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
-from sqlalchemy.exc import SQLAlchemyError
 
 from vidscope.adapters.sqlite.schema import videos as videos_table
-from vidscope.domain import Creator, CreatorId, Platform, PlatformId, Video, VideoId
+from vidscope.domain import Platform, PlatformId, Video, VideoId
 from vidscope.domain.errors import StorageError
 
 __all__ = ["VideoRepositorySQLite"]
@@ -38,7 +37,7 @@ class VideoRepositorySQLite:
         payload = _video_to_row(video)
         try:
             result = self._conn.execute(videos_table.insert().values(**payload))
-        except SQLAlchemyError as exc:  # SQLAlchemy wraps IntegrityError etc.
+        except Exception as exc:  # SQLAlchemy wraps IntegrityError etc.
             raise StorageError(
                 f"failed to insert video {video.platform_id}: {exc}",
                 cause=exc,
@@ -51,26 +50,14 @@ class VideoRepositorySQLite:
             )
         return self.get(VideoId(int(inserted_id[0]))) or video
 
-    def upsert_by_platform_id(
-        self, video: Video, creator: Creator | None = None
-    ) -> Video:
+    def upsert_by_platform_id(self, video: Video) -> Video:
         """Insert or update the row matching ``(platform, platform_id)``.
 
-        See :class:`VideoRepository.upsert_by_platform_id` for the
-        write-through cache contract on ``videos.author`` when ``creator``
-        is provided (D-03).
+        Uses SQLite's ``INSERT ... ON CONFLICT(platform_id) DO UPDATE``
+        syntax. Fields present on ``video`` overwrite the existing row;
+        ``created_at`` is preserved on update.
         """
         payload = _video_to_row(video)
-
-        # D-03 write-through: when a creator is passed, the repository
-        # owns both `author` (denormalised cache) and `creator_id` (FK).
-        # They ARE written in the same SQL statement → atomic.
-        if creator is not None:
-            if creator.display_name is not None:
-                payload["author"] = creator.display_name
-            if creator.id is not None:
-                payload["creator_id"] = int(creator.id)
-
         stmt = sqlite_insert(videos_table).values(**payload)
         # On conflict, update every field except id and created_at.
         update_map = {
@@ -84,7 +71,7 @@ class VideoRepositorySQLite:
         )
         try:
             self._conn.execute(stmt)
-        except SQLAlchemyError as exc:
+        except Exception as exc:
             raise StorageError(
                 f"upsert failed for video {video.platform_id}: {exc}",
                 cause=exc,
@@ -134,70 +121,11 @@ class VideoRepositorySQLite:
         )
         return [_row_to_video(row) for row in rows]
 
-    def list_by_creator(
-        self, creator_id: CreatorId, *, limit: int = 50
-    ) -> list[Video]:
-        """Return up to ``limit`` videos for ``creator_id``, newest first."""
-        rows = (
-            self._conn.execute(
-                select(videos_table)
-                .where(videos_table.c.creator_id == int(creator_id))
-                .order_by(videos_table.c.created_at.desc())
-                .limit(limit)
-            )
-            .mappings()
-            .all()
-        )
-        return [_row_to_video(row) for row in rows]
-
-    def count_by_creator(self, creator_id: CreatorId) -> int:
-        """Return the total number of videos linked to ``creator_id``."""
-        total = self._conn.execute(
-            select(func.count())
-            .select_from(videos_table)
-            .where(videos_table.c.creator_id == int(creator_id))
-        ).scalar()
-        return int(total or 0)
-
     def count(self) -> int:
         total = self._conn.execute(
             select(func.count()).select_from(videos_table)
         ).scalar()
         return int(total or 0)
-
-    def update_visual_metadata(
-        self,
-        video_id: VideoId,
-        *,
-        thumbnail_key: str | None,
-        content_shape: str | None,
-    ) -> None:
-        """Update ``videos.thumbnail_key`` and ``videos.content_shape``
-        for ``video_id`` in a single targeted UPDATE.
-
-        Raises
-        ------
-        StorageError
-            When no video row matches ``video_id``.
-        """
-        try:
-            result = self._conn.execute(
-                videos_table.update()
-                .where(videos_table.c.id == int(video_id))
-                .values(
-                    thumbnail_key=thumbnail_key,
-                    content_shape=content_shape,
-                )
-            )
-        except SQLAlchemyError as exc:
-            raise StorageError(
-                f"update_visual_metadata failed for video {int(video_id)}: {exc}",
-                cause=exc,
-            ) from exc
-        if result.rowcount == 0:
-            raise StorageError(
-                f"update_visual_metadata: video {int(video_id)} not found"
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -220,11 +148,6 @@ def _video_to_row(video: Video) -> dict[str, Any]:
         "view_count": video.view_count,
         "media_key": video.media_key,
         "created_at": video.created_at or datetime.now(UTC),
-        "description": video.description,
-        "music_track": video.music_track,
-        "music_artist": video.music_artist,
-        "thumbnail_key": video.thumbnail_key,
-        "content_shape": video.content_shape,
     }
 
 
@@ -243,16 +166,6 @@ def _row_to_video(row: Any) -> Video:
         view_count=data.get("view_count"),
         media_key=data.get("media_key"),
         created_at=_ensure_utc(data.get("created_at")),
-        creator_id=(
-            CreatorId(int(data["creator_id"]))
-            if data.get("creator_id") is not None
-            else None
-        ),
-        description=data.get("description"),
-        music_track=data.get("music_track"),
-        music_artist=data.get("music_artist"),
-        thumbnail_key=data.get("thumbnail_key"),
-        content_shape=data.get("content_shape"),
     )
 
 

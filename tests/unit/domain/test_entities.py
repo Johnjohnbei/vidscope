@@ -12,25 +12,19 @@ import pytest
 
 from vidscope.domain.entities import (
     Analysis,
-    Creator,
     Frame,
-    FrameText,
-    Hashtag,
-    Link,
-    Mention,
     PipelineRun,
     Transcript,
     TranscriptSegment,
     Video,
+    VideoStats,
     WatchedAccount,
     WatchRefresh,
 )
 from vidscope.domain.values import (
-    CreatorId,
     Language,
     Platform,
     PlatformId,
-    PlatformUserId,
     RunStatus,
     StageName,
     VideoId,
@@ -244,314 +238,67 @@ class TestWatchRefresh:
         assert r.errors == ()
 
 
-class TestCreator:
-    def _minimal(self) -> Creator:
-        return Creator(
-            platform=Platform.YOUTUBE,
-            platform_user_id=PlatformUserId("UC_ABC"),
-        )
-
-    def test_minimal_creator_has_defaults(self) -> None:
-        c = self._minimal()
-        assert c.id is None
-        assert c.handle is None
-        assert c.display_name is None
-        assert c.profile_url is None
-        assert c.avatar_url is None
-        assert c.follower_count is None
-        assert c.is_verified is None
-        assert c.is_orphan is False
-        assert c.first_seen_at is None
-        assert c.last_seen_at is None
-        assert c.created_at is None
-
-    def test_creator_is_frozen(self) -> None:
-        c = self._minimal()
-        with pytest.raises(FrozenInstanceError):
-            c.handle = "@new"  # type: ignore[misc]
-
-    def test_creator_uses_slots(self) -> None:
-        c = self._minimal()
-        assert not hasattr(c, "__dict__")
-
-    def test_creator_equality_by_fields(self) -> None:
-        a = Creator(
-            platform=Platform.YOUTUBE,
-            platform_user_id=PlatformUserId("UC_ABC"),
-            handle="@creator",
-            display_name="The Creator",
-        )
-        b = Creator(
-            platform=Platform.YOUTUBE,
-            platform_user_id=PlatformUserId("UC_ABC"),
-            handle="@creator",
-            display_name="The Creator",
-        )
-        assert a == b
-
-    def test_orphan_flag_round_trips(self) -> None:
-        c = Creator(
-            platform=Platform.INSTAGRAM,
-            platform_user_id=PlatformUserId("orphan:legacy_author"),
-            is_orphan=True,
-        )
-        assert c.is_orphan is True
-
-    def test_full_fields_construction(self) -> None:
-        now = UTC_NOW
-        c = Creator(
-            platform=Platform.TIKTOK,
-            platform_user_id=PlatformUserId("12345"),
-            id=CreatorId(7),
-            handle="@test",
-            display_name="Test",
-            profile_url="https://tiktok.com/@test",
-            avatar_url="https://cdn/test.jpg",
-            follower_count=100_000,
-            is_verified=True,
-            is_orphan=False,
-            first_seen_at=now,
-            last_seen_at=now,
-            created_at=now,
-        )
-        assert c.id == 7
-        assert c.follower_count == 100_000
-        assert c.is_verified is True
-
-
-class TestVideoMetadataColumns:
-    """M007 D-01: description, music_track, music_artist on Video."""
-
-    def _minimal(self) -> Video:
-        return Video(
-            platform=Platform.YOUTUBE,
-            platform_id=PlatformId("abc"),
-            url="https://youtube.com/watch?v=abc",
-        )
-
-    def test_metadata_defaults_are_none(self) -> None:
-        v = self._minimal()
-        assert v.description is None
-        assert v.music_track is None
-        assert v.music_artist is None
-
-    def test_metadata_round_trip(self) -> None:
-        v = Video(
-            platform=Platform.TIKTOK,
-            platform_id=PlatformId("t123"),
-            url="https://tiktok.com/@x/video/t123",
-            description="#Cooking at home @alice https://shop.com",
-            music_track="Original sound",
-            music_artist="@creator",
-        )
-        assert v.description == "#Cooking at home @alice https://shop.com"
-        assert v.music_track == "Original sound"
-        assert v.music_artist == "@creator"
-
-    def test_description_is_frozen(self) -> None:
-        v = self._minimal()
-        with pytest.raises(FrozenInstanceError):
-            v.description = "mutate"  # type: ignore[misc]
-
-
-class TestHashtag:
-    def _minimal(self) -> Hashtag:
-        return Hashtag(video_id=VideoId(1), tag="coding")
-
-    def test_minimal_hashtag_has_defaults(self) -> None:
-        h = self._minimal()
-        assert h.video_id == VideoId(1)
-        assert h.tag == "coding"
-        assert h.id is None
-        assert h.created_at is None
-
-    def test_hashtag_preserves_caller_value_verbatim(self) -> None:
-        # Canonicalisation (lowercase + strip #) is the adapter's job;
-        # the dataclass stores what the caller passed.
-        h = Hashtag(video_id=VideoId(1), tag="#Coding")
-        assert h.tag == "#Coding"
-
-    def test_hashtag_is_frozen(self) -> None:
-        h = self._minimal()
-        with pytest.raises(FrozenInstanceError):
-            h.tag = "other"  # type: ignore[misc]
-
-    def test_hashtag_uses_slots(self) -> None:
-        h = self._minimal()
-        assert not hasattr(h, "__dict__")
-
-    def test_hashtag_equality_by_fields(self) -> None:
-        a = Hashtag(video_id=VideoId(1), tag="coding")
-        b = Hashtag(video_id=VideoId(1), tag="coding")
-        assert a == b
-
-
-class TestMention:
-    def _minimal(self) -> Mention:
-        return Mention(video_id=VideoId(1), handle="alice")
-
-    def test_minimal_mention_has_defaults(self) -> None:
-        m = self._minimal()
-        assert m.video_id == VideoId(1)
-        assert m.handle == "alice"
-        assert m.platform is None
-        assert m.id is None
-        assert m.created_at is None
-
-    def test_mention_accepts_optional_platform(self) -> None:
-        m = Mention(
-            video_id=VideoId(1),
-            handle="alice",
-            platform=Platform.TIKTOK,
-        )
-        assert m.platform is Platform.TIKTOK
-
-    def test_mention_is_frozen(self) -> None:
-        m = self._minimal()
-        with pytest.raises(FrozenInstanceError):
-            m.handle = "other"  # type: ignore[misc]
-
-    def test_mention_uses_slots(self) -> None:
-        m = self._minimal()
-        assert not hasattr(m, "__dict__")
-
-    def test_mention_equality_by_fields(self) -> None:
-        a = Mention(video_id=VideoId(1), handle="alice", platform=Platform.TIKTOK)
-        b = Mention(video_id=VideoId(1), handle="alice", platform=Platform.TIKTOK)
-        assert a == b
-
-
-class TestLink:
-    def _minimal(self) -> Link:
-        return Link(
-            video_id=VideoId(1),
-            url="https://example.com/path",
-            normalized_url="https://example.com/path",
-            source="description",
-        )
-
-    def test_minimal_link_has_defaults(self) -> None:
-        ln = self._minimal()
-        assert ln.video_id == VideoId(1)
-        assert ln.source == "description"
-        assert ln.position_ms is None
-        assert ln.id is None
-        assert ln.created_at is None
-
-    def test_link_is_frozen(self) -> None:
-        ln = self._minimal()
-        with pytest.raises(FrozenInstanceError):
-            ln.url = "other"  # type: ignore[misc]
-
-    def test_link_uses_slots(self) -> None:
-        ln = self._minimal()
-        assert not hasattr(ln, "__dict__")
-
-    def test_link_preserves_raw_url_and_normalized_distinctly(self) -> None:
-        ln = Link(
-            video_id=VideoId(1),
-            url="https://Example.COM/Path?utm_source=x",
-            normalized_url="https://example.com/Path",
-            source="description",
-        )
-        assert ln.url == "https://Example.COM/Path?utm_source=x"
-        assert ln.normalized_url == "https://example.com/Path"
-
-    def test_link_accepts_position_ms(self) -> None:
-        ln = Link(
-            video_id=VideoId(1),
-            url="https://example.com",
-            normalized_url="https://example.com",
-            source="transcript",
-            position_ms=12_345,
-        )
-        assert ln.position_ms == 12_345
-
-
-class TestFrameText:
-    def _minimal(self) -> FrameText:
-        return FrameText(
-            video_id=VideoId(1),
-            frame_id=5,
-            text="Link in bio",
-            confidence=0.92,
-        )
-
-    def test_construction_with_defaults(self) -> None:
-        ft = self._minimal()
-        assert ft.video_id == VideoId(1)
-        assert ft.frame_id == 5
-        assert ft.text == "Link in bio"
-        assert ft.confidence == 0.92
-        assert ft.bbox is None
-        assert ft.id is None
-        assert ft.created_at is None
-
-    def test_full_round_trip_including_bbox(self) -> None:
-        now = UTC_NOW
-        ft = FrameText(
-            video_id=VideoId(2),
-            frame_id=10,
-            text="Promo code: SAVE20",
-            confidence=0.88,
-            bbox="[[0,0],[100,0],[100,20],[0,20]]",
-            id=42,
-            created_at=now,
-        )
-        assert ft.text == "Promo code: SAVE20"
-        assert ft.bbox == "[[0,0],[100,0],[100,20],[0,20]]"
-        assert ft.id == 42
-        assert ft.created_at == now
+class TestVideoStats:
+    """Tests for the VideoStats frozen dataclass (M009-S01)."""
 
     def test_is_frozen(self) -> None:
-        ft = self._minimal()
-        with pytest.raises(FrozenInstanceError):
-            ft.text = "mutated"  # type: ignore[misc]
-
-    def test_uses_slots(self) -> None:
-        ft = self._minimal()
-        assert not hasattr(ft, "__dict__")
-
-    def test_equality_by_fields(self) -> None:
-        a = FrameText(video_id=VideoId(1), frame_id=5, text="hello", confidence=0.9)
-        b = FrameText(video_id=VideoId(1), frame_id=5, text="hello", confidence=0.9)
-        assert a == b
-
-    def test_confidence_accepts_floats_outside_unit_interval(self) -> None:
-        # The dataclass does NOT validate the range — that's the adapter's job.
-        ft = FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=1.5)
-        assert ft.confidence == 1.5
-        ft2 = FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=-0.1)
-        assert ft2.confidence == -0.1
-
-
-class TestVideoVisualMetadata:
-    """M008/S03: thumbnail_key + content_shape fields on Video (R048, R049)."""
-
-    def _minimal(self) -> Video:
-        return Video(
-            platform=Platform.YOUTUBE,
-            platform_id=PlatformId("x"),
-            url="u",
+        """Test 1: VideoStats is frozen — mutation raises FrozenInstanceError."""
+        stats = VideoStats(
+            video_id=VideoId(1),
+            captured_at=UTC_NOW,
         )
-
-    def test_defaults_none(self) -> None:
-        v = self._minimal()
-        assert v.thumbnail_key is None
-        assert v.content_shape is None
-
-    def test_round_trip(self) -> None:
-        v = Video(
-            platform=Platform.YOUTUBE,
-            platform_id=PlatformId("x"),
-            url="u",
-            thumbnail_key="videos/youtube/x/thumb.jpg",
-            content_shape="talking_head",
-        )
-        assert v.thumbnail_key == "videos/youtube/x/thumb.jpg"
-        assert v.content_shape == "talking_head"
-
-    def test_is_frozen(self) -> None:
-        v = self._minimal()
         with pytest.raises(FrozenInstanceError):
-            v.thumbnail_key = "x"  # type: ignore[misc]
+            stats.view_count = 42  # type: ignore[misc]
+
+    def test_all_counters_default_to_none(self) -> None:
+        """Test 2: all 5 counters default to None when not provided."""
+        stats = VideoStats(
+            video_id=VideoId(1),
+            captured_at=UTC_NOW,
+        )
+        assert stats.view_count is None
+        assert stats.like_count is None
+        assert stats.repost_count is None
+        assert stats.comment_count is None
+        assert stats.save_count is None
+        assert stats.id is None
+        assert stats.created_at is None
+
+    def test_zero_is_distinct_from_none(self) -> None:
+        """Test 3: view_count=0 must NOT compare equal to None (D-03)."""
+        stats = VideoStats(
+            video_id=VideoId(1),
+            captured_at=UTC_NOW,
+            view_count=0,
+        )
+        assert stats.view_count is not None
+        assert stats.view_count == 0
+
+    def test_counters_populated(self) -> None:
+        """All 5 counters can be set and retrieved."""
+        stats = VideoStats(
+            video_id=VideoId(42),
+            captured_at=UTC_NOW,
+            view_count=1000,
+            like_count=50,
+            repost_count=10,
+            comment_count=25,
+            save_count=5,
+        )
+        assert stats.view_count == 1000
+        assert stats.like_count == 50
+        assert stats.repost_count == 10
+        assert stats.comment_count == 25
+        assert stats.save_count == 5
+
+    def test_partial_counters_preserve_none(self) -> None:
+        """Unset counters stay None even when others are provided (D-03)."""
+        stats = VideoStats(
+            video_id=VideoId(1),
+            captured_at=UTC_NOW,
+            view_count=500,
+            like_count=None,
+        )
+        assert stats.view_count == 500
+        assert stats.like_count is None
+        assert stats.repost_count is None

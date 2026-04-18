@@ -24,12 +24,9 @@ from enum import StrEnum
 from typing import NewType
 
 __all__ = [
-    "ContentShape",
-    "CreatorId",
     "Language",
     "Platform",
     "PlatformId",
-    "PlatformUserId",
     "RunStatus",
     "StageName",
     "VideoId",
@@ -42,17 +39,6 @@ VideoId = NewType("VideoId", int)
 PlatformId = NewType("PlatformId", str)
 """Platform-assigned stable identifier (e.g. YouTube video id, TikTok aweme
 id). Combined with :class:`Platform` it is globally unique across sources."""
-
-CreatorId = NewType("CreatorId", int)
-"""Database-assigned primary key for a :class:`Creator`. Surrogate
-autoincrement INT PK — opaque to callers, ergonomic for FKs and CLI
-arguments (per D-01)."""
-
-PlatformUserId = NewType("PlatformUserId", str)
-"""Platform-assigned stable user identifier — yt-dlp's ``uploader_id``.
-Never changes on account rename (per D-01). Combined with
-:class:`Platform` it is the canonical UNIQUE key on the ``creators``
-table."""
 
 
 class Platform(StrEnum):
@@ -82,26 +68,6 @@ class Language(StrEnum):
     UNKNOWN = "unknown"
 
 
-class ContentShape(StrEnum):
-    """High-level classification of a video's visual form.
-
-    Computed by M008 :class:`VisualIntelligenceStage` from a
-    face-count heuristic over extracted frames. Persisted as a
-    string column on the ``videos`` table (per M008 RESEARCH §5.1
-    — direct column, no side entity).
-
-    - ``TALKING_HEAD`` — ≥ 40% of frames show at least one face
-    - ``BROLL`` — zero frames show a face
-    - ``MIXED`` — between the two
-    - ``UNKNOWN`` — no frames were processed or OpenCV unavailable
-    """
-
-    TALKING_HEAD = "talking_head"
-    BROLL = "broll"
-    MIXED = "mixed"
-    UNKNOWN = "unknown"
-
-
 class StageName(StrEnum):
     """Discrete stage of the ingestion pipeline.
 
@@ -113,9 +79,8 @@ class StageName(StrEnum):
     TRANSCRIBE = "transcribe"
     FRAMES = "frames"
     ANALYZE = "analyze"
-    VISUAL_INTELLIGENCE = "visual_intelligence"
-    METADATA_EXTRACT = "metadata_extract"
     INDEX = "index"
+    STATS = "stats"
 
 
 class RunStatus(StrEnum):

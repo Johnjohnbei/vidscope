@@ -22,20 +22,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.engine.base import RootTransaction
 
 from vidscope.adapters.sqlite.analysis_repository import AnalysisRepositorySQLite
-from vidscope.adapters.sqlite.creator_repository import (
-    CreatorRepositorySQLite,
-)
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
-from vidscope.adapters.sqlite.frame_text_repository import (
-    FrameTextRepositorySQLite,
-)
-from vidscope.adapters.sqlite.hashtag_repository import (
-    HashtagRepositorySQLite,
-)
-from vidscope.adapters.sqlite.link_repository import LinkRepositorySQLite
-from vidscope.adapters.sqlite.mention_repository import (
-    MentionRepositorySQLite,
-)
 from vidscope.adapters.sqlite.pipeline_run_repository import (
     PipelineRunRepositorySQLite,
 )
@@ -47,22 +34,19 @@ from vidscope.adapters.sqlite.video_repository import VideoRepositorySQLite
 from vidscope.adapters.sqlite.watch_account_repository import (
     WatchAccountRepositorySQLite,
 )
+from vidscope.adapters.sqlite.video_stats_repository import VideoStatsRepositorySQLite
 from vidscope.adapters.sqlite.watch_refresh_repository import (
     WatchRefreshRepositorySQLite,
 )
 from vidscope.domain.errors import StorageError
 from vidscope.ports import (
     AnalysisRepository,
-    CreatorRepository,
     FrameRepository,
-    FrameTextRepository,
-    HashtagRepository,
-    LinkRepository,
-    MentionRepository,
     PipelineRunRepository,
     SearchIndex,
     TranscriptRepository,
     VideoRepository,
+    VideoStatsRepository,
     WatchAccountRepository,
     WatchRefreshRepository,
 )
@@ -89,18 +73,14 @@ class SqliteUnitOfWork:
         # the same attribute types on both. Concrete adapters are
         # instantiated in __enter__ and assigned to these slots.
         self.videos: VideoRepository
-        self.creators: CreatorRepository
         self.transcripts: TranscriptRepository
         self.frames: FrameRepository
-        self.frame_texts: FrameTextRepository
         self.analyses: AnalysisRepository
-        self.hashtags: HashtagRepository
-        self.mentions: MentionRepository
-        self.links: LinkRepository
         self.pipeline_runs: PipelineRunRepository
         self.search_index: SearchIndex
         self.watch_accounts: WatchAccountRepository
         self.watch_refreshes: WatchRefreshRepository
+        self.video_stats: VideoStatsRepository
 
     def __enter__(self) -> SqliteUnitOfWork:
         if self._connection is not None:
@@ -109,18 +89,14 @@ class SqliteUnitOfWork:
         self._transaction = self._connection.begin()
 
         self.videos = VideoRepositorySQLite(self._connection)
-        self.creators = CreatorRepositorySQLite(self._connection)
         self.transcripts = TranscriptRepositorySQLite(self._connection)
         self.frames = FrameRepositorySQLite(self._connection)
-        self.frame_texts = FrameTextRepositorySQLite(self._connection)
         self.analyses = AnalysisRepositorySQLite(self._connection)
-        self.hashtags = HashtagRepositorySQLite(self._connection)
-        self.mentions = MentionRepositorySQLite(self._connection)
-        self.links = LinkRepositorySQLite(self._connection)
         self.pipeline_runs = PipelineRunRepositorySQLite(self._connection)
         self.search_index = SearchIndexSQLite(self._connection)
         self.watch_accounts = WatchAccountRepositorySQLite(self._connection)
         self.watch_refreshes = WatchRefreshRepositorySQLite(self._connection)
+        self.video_stats = VideoStatsRepositorySQLite(self._connection)
 
         return self
 

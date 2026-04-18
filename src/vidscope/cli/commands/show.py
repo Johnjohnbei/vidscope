@@ -16,10 +16,6 @@ from vidscope.cli._support import (
 __all__ = ["show_command"]
 
 
-_DESCRIPTION_PREVIEW_CHARS = 240
-_FRAME_TEXT_PREVIEW_LIMIT = 5
-
-
 def show_command(
     video_id: int = typer.Argument(..., help="Numeric id of the video to show."),
 ) -> None:
@@ -52,36 +48,6 @@ def show_command(
             )
         )
 
-        # M007: description + music + hashtags + mentions
-        if video.description:
-            preview = video.description
-            if len(preview) > _DESCRIPTION_PREVIEW_CHARS:
-                preview = preview[: _DESCRIPTION_PREVIEW_CHARS - 1] + "…"
-            console.print(f"[bold]description:[/bold] {preview}")
-        else:
-            console.print("[dim]description: none[/dim]")
-
-        if video.music_track or video.music_artist:
-            track = video.music_track or "-"
-            artist = video.music_artist or "-"
-            console.print(f"[bold]music:[/bold] {track} — {artist}")
-        else:
-            console.print("[dim]music: none[/dim]")
-
-        if result.hashtags:
-            tags = ", ".join(f"#{h.tag}" for h in result.hashtags)
-            console.print(f"[bold]hashtags:[/bold] {tags}")
-        else:
-            console.print("[dim]hashtags: none[/dim]")
-
-        if result.mentions:
-            handles = ", ".join(f"@{m.handle}" for m in result.mentions)
-            console.print(f"[bold]mentions:[/bold] {handles}")
-        else:
-            console.print("[dim]mentions: none[/dim]")
-
-        console.print(f"[bold]links:[/bold] {len(result.links)}")
-
         if result.transcript is not None:
             t = result.transcript
             console.print(
@@ -102,39 +68,3 @@ def show_command(
             )
         else:
             console.print("[dim]analysis: none yet[/dim]")
-
-        if result.creator is not None:
-            c = result.creator
-            followers = f"{c.follower_count:,}" if c.follower_count else "-"
-            console.print(
-                f"[bold]creator:[/bold] {c.handle or c.display_name or '-'} "
-                f"([dim]{c.platform.value}[/dim], {followers} followers)"
-            )
-        else:
-            console.print("[dim]creator: unknown[/dim]")
-
-        # M008: on-screen text + thumbnail + content_shape
-        if result.frame_texts:
-            count = len(result.frame_texts)
-            ft_preview = result.frame_texts[:_FRAME_TEXT_PREVIEW_LIMIT]
-            console.print(f"[bold]on-screen text:[/bold] {count} block(s)")
-            for ft in ft_preview:
-                conf = f"{ft.confidence:.2f}"
-                console.print(f"  [dim]•[/dim] {ft.text} [dim](conf={conf})[/dim]")
-            if count > _FRAME_TEXT_PREVIEW_LIMIT:
-                console.print(
-                    f"  [dim]...and {count - _FRAME_TEXT_PREVIEW_LIMIT} more[/dim]"
-                )
-        else:
-            console.print("[dim]on-screen text: none[/dim]")
-
-        if result.thumbnail_key:
-            console.print(f"[bold]thumbnail:[/bold] {result.thumbnail_key}")
-        else:
-            console.print("[dim]thumbnail: none[/dim]")
-
-        shape_display = result.content_shape or "unknown"
-        if result.content_shape is None:
-            console.print(f"[dim]content_shape: {shape_display}[/dim]")
-        else:
-            console.print(f"[bold]content_shape:[/bold] {shape_display}")

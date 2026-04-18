@@ -282,60 +282,6 @@ class TestCheckAnalyzer:
         assert "groq" in result.version_or_error
         assert "key present" in result.version_or_error
 
-
-class TestCheckVision:
-    def test_check_vision_both_missing(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            "importlib.util.find_spec", lambda name: None
-        )
-        result = startup.check_vision()
-        assert result.name == "vision"
-        assert result.ok is True
-        assert "not installed" in result.version_or_error
-
-    def test_check_vision_both_present(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        class _FakeSpec:
-            pass
-
-        monkeypatch.setattr(
-            "importlib.util.find_spec", lambda name: _FakeSpec()
-        )
-        result = startup.check_vision()
-        assert result.name == "vision"
-        assert result.ok is True
-
-    def test_check_vision_partial_install_rapidocr_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        def _fake_find_spec(name: str) -> object | None:
-            return object() if name == "rapidocr_onnxruntime" else None
-
-        monkeypatch.setattr("importlib.util.find_spec", _fake_find_spec)
-        result = startup.check_vision()
-        assert result.name == "vision"
-        assert result.ok is False
-        assert "opencv-python-headless" in result.version_or_error
-
-    def test_check_vision_partial_install_cv2_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        def _fake_find_spec(name: str) -> object | None:
-            return object() if name == "cv2" else None
-
-        monkeypatch.setattr("importlib.util.find_spec", _fake_find_spec)
-        result = startup.check_vision()
-        assert result.name == "vision"
-        assert result.ok is False
-        assert "rapidocr-onnxruntime" in result.version_or_error
-
-    def test_run_all_checks_includes_vision(self) -> None:
-        names = {r.name for r in startup.run_all_checks()}
-        assert "vision" in names
-
     def test_groq_without_key_fails(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -390,6 +336,6 @@ class TestRunAllChecks:
 
         results = startup.run_all_checks()
 
-        assert len(results) == 6
+        assert len(results) == 5
         names = {r.name for r in results}
-        assert names == {"ffmpeg", "yt-dlp", "mcp", "cookies", "analyzer", "vision"}
+        assert names == {"ffmpeg", "yt-dlp", "mcp", "cookies", "analyzer"}

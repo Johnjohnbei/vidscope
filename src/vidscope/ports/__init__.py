@@ -16,12 +16,9 @@ that rule mechanically.
 from __future__ import annotations
 
 from vidscope.ports.clock import Clock
-from vidscope.ports.link_extractor import LinkExtractor, RawLink
-from vidscope.ports.ocr_engine import FaceCounter, OcrEngine, OcrLine
 from vidscope.ports.pipeline import (
     Analyzer,
     ChannelEntry,
-    CreatorInfo,
     Downloader,
     FrameExtractor,
     IngestOutcome,
@@ -36,18 +33,15 @@ from vidscope.ports.pipeline import (
 )
 from vidscope.ports.repositories import (
     AnalysisRepository,
-    CreatorRepository,
     FrameRepository,
-    FrameTextRepository,
-    HashtagRepository,
-    LinkRepository,
-    MentionRepository,
     PipelineRunRepository,
     TranscriptRepository,
     VideoRepository,
+    VideoStatsRepository,
     WatchAccountRepository,
     WatchRefreshRepository,
 )
+from vidscope.ports.stats_probe import StatsProbe
 from vidscope.ports.storage import MediaStorage
 from vidscope.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 
@@ -56,35 +50,26 @@ __all__ = [
     "Analyzer",
     "ChannelEntry",
     "Clock",
-    "CreatorInfo",
-    "CreatorRepository",
     "Downloader",
-    "FaceCounter",
     "FrameExtractor",
     "FrameRepository",
-    "FrameTextRepository",
-    "HashtagRepository",
     "IngestOutcome",
-    "LinkExtractor",
-    "LinkRepository",
     "MediaStorage",
-    "MentionRepository",
-    "OcrEngine",
-    "OcrLine",
     "PipelineContext",
     "PipelineRunRepository",
     "ProbeResult",
     "ProbeStatus",
-    "RawLink",
     "SearchIndex",
     "SearchResult",
     "Stage",
     "StageResult",
+    "StatsProbe",
     "Transcriber",
     "TranscriptRepository",
     "UnitOfWork",
     "UnitOfWorkFactory",
     "VideoRepository",
+    "VideoStatsRepository",
     "WatchAccountRepository",
     "WatchRefreshRepository",
 ]

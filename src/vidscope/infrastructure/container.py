@@ -46,10 +46,8 @@ from vidscope.adapters.ffmpeg import FfmpegFrameExtractor
 from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
-from vidscope.adapters.text import RegexLinkExtractor
-from vidscope.adapters.vision import HaarcascadeFaceCounter, RapidOcrEngine
 from vidscope.adapters.whisper import FasterWhisperTranscriber
-from vidscope.adapters.ytdlp import YtdlpDownloader
+from vidscope.adapters.ytdlp import YtdlpDownloader, YtdlpStatsProbe
 from vidscope.infrastructure.analyzer_registry import build_analyzer
 from vidscope.infrastructure.config import Config, get_config
 from vidscope.infrastructure.sqlite_engine import build_engine
@@ -59,9 +57,7 @@ from vidscope.pipeline.stages import (
     FramesStage,
     IndexStage,
     IngestStage,
-    MetadataExtractStage,
     TranscribeStage,
-    VisualIntelligenceStage,
 )
 from vidscope.ports.clock import Clock
 from vidscope.ports.pipeline import (
@@ -70,6 +66,7 @@ from vidscope.ports.pipeline import (
     FrameExtractor,
     Transcriber,
 )
+from vidscope.ports.stats_probe import StatsProbe
 from vidscope.ports.storage import MediaStorage
 from vidscope.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 
@@ -132,6 +129,7 @@ class Container:
     transcriber: Transcriber
     frame_extractor: FrameExtractor
     analyzer: Analyzer
+    stats_probe: StatsProbe
     pipeline_runner: PipelineRunner
     clock: Clock = field(default_factory=SystemClock)
 
@@ -182,6 +180,7 @@ def build_container(config: Config | None = None) -> Container:
     # the first ingest. When cookies_file is None (the default) the
     # downloader behaves exactly as it did before S07.
     downloader = YtdlpDownloader(cookies_file=resolved_config.cookies_file)
+    stats_probe: StatsProbe = YtdlpStatsProbe(cookies_file=resolved_config.cookies_file)
 
     # FasterWhisperTranscriber loads the model lazily on the first
     # transcribe call (S03/D026), so this constructor never triggers
@@ -219,30 +218,6 @@ def build_container(config: Config | None = None) -> Container:
         cache_dir=resolved_config.cache_dir,
     )
     analyze_stage = AnalyzeStage(analyzer=analyzer)
-
-    link_extractor = RegexLinkExtractor()
-
-    # M008/S02 — vision stage runs AFTER frames and BEFORE
-    # metadata_extract. RapidOcrEngine is lazy-loaded: the ONNX
-    # model (~50MB) downloads on the first OCR call, not here.
-    # If rapidocr-onnxruntime is not installed, the engine
-    # returns [] for every frame and the stage emits SKIPPED
-    # (see VisualIntelligenceStage.execute).
-    ocr_engine = RapidOcrEngine()
-    # HaarcascadeFaceCounter lazy-loads cv2 on first call — safe at
-    # container build time even when opencv-python-headless is not
-    # installed (returns 0 for every frame in that case).
-    face_counter = HaarcascadeFaceCounter()
-    visual_intelligence_stage = VisualIntelligenceStage(
-        ocr_engine=ocr_engine,
-        face_counter=face_counter,
-        link_extractor=link_extractor,
-        media_storage=media_storage,
-    )
-
-    metadata_extract_stage = MetadataExtractStage(
-        link_extractor=link_extractor,
-    )
     index_stage = IndexStage()
 
     pipeline_runner = PipelineRunner(
@@ -251,8 +226,6 @@ def build_container(config: Config | None = None) -> Container:
             transcribe_stage,
             frames_stage,
             analyze_stage,
-            visual_intelligence_stage,  # NEW — M008/S02
-            metadata_extract_stage,
             index_stage,
         ],
         unit_of_work_factory=_uow_factory,
@@ -268,6 +241,7 @@ def build_container(config: Config | None = None) -> Container:
         transcriber=transcriber,
         frame_extractor=frame_extractor,
         analyzer=analyzer,
+        stats_probe=stats_probe,
         pipeline_runner=pipeline_runner,
         clock=clock,
     )

@@ -12,16 +12,12 @@ from __future__ import annotations
 
 from vidscope.domain.entities import (
     Analysis,
-    Creator,
     Frame,
-    FrameText,
-    Hashtag,
-    Link,
-    Mention,
     PipelineRun,
     Transcript,
     TranscriptSegment,
     Video,
+    VideoStats,
     WatchedAccount,
     WatchRefresh,
 )
@@ -39,12 +35,9 @@ from vidscope.domain.errors import (
 )
 from vidscope.domain.platform_detection import detect_platform
 from vidscope.domain.values import (
-    ContentShape,
-    CreatorId,
     Language,
     Platform,
     PlatformId,
-    PlatformUserId,
     RunStatus,
     StageName,
     VideoId,
@@ -53,16 +46,12 @@ from vidscope.domain.values import (
 __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values / helpers), not alphabetized
     # entities
     "Analysis",
-    "Creator",
     "Frame",
-    "FrameText",
-    "Hashtag",
-    "Link",
-    "Mention",
     "PipelineRun",
     "Transcript",
     "TranscriptSegment",
     "Video",
+    "VideoStats",
     "WatchedAccount",
     "WatchRefresh",
     # errors
@@ -77,12 +66,9 @@ __all__ = [  # noqa: RUF022 — grouped by concern (entities / errors / values /
     "StorageError",
     "TranscriptionError",
     # values
-    "ContentShape",
-    "CreatorId",
     "Language",
     "Platform",
     "PlatformId",
-    "PlatformUserId",
     "RunStatus",
     "StageName",
     "VideoId",

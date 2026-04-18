@@ -43,7 +43,6 @@ from sqlalchemy import (
     Engine,
     Float,
     ForeignKey,
-    Index,
     Integer,
     MetaData,
     String,
@@ -56,16 +55,12 @@ from sqlalchemy.engine import Connection
 
 __all__ = [
     "analyses",
-    "creators",
-    "frame_texts",
     "frames",
-    "hashtags",
     "init_db",
-    "links",
-    "mentions",
     "metadata",
     "pipeline_runs",
     "transcripts",
+    "video_stats",
     "videos",
     "watch_refreshes",
     "watched_accounts",
@@ -98,17 +93,6 @@ videos = Table(
     Column("view_count", Integer, nullable=True),
     Column("media_key", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
-    Column(
-        "creator_id",
-        Integer,
-        ForeignKey("creators.id", ondelete="SET NULL"),
-        nullable=True,
-    ),
-    Column("description", Text, nullable=True),
-    Column("music_track", String(255), nullable=True),
-    Column("music_artist", String(255), nullable=True),
-    Column("thumbnail_key", Text, nullable=True),
-    Column("content_shape", String(32), nullable=True),
 )
 
 transcripts = Table(
@@ -142,38 +126,6 @@ frames = Table(
     Column("is_keyframe", Boolean, nullable=False, default=False),
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
 )
-
-# M008: frame OCR text side table (R047). video_id is denormalised so the
-# FTS5 virtual table can filter by video without a JOIN (same pattern as
-# search_index). FK cascade on both frames.id and videos.id.
-frame_texts = Table(
-    "frame_texts",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column(
-        "video_id",
-        Integer,
-        ForeignKey("videos.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column(
-        "frame_id",
-        Integer,
-        ForeignKey("frames.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("text", Text, nullable=False),
-    Column("confidence", Float, nullable=False),
-    Column("bbox", Text, nullable=True),
-    Column(
-        "created_at",
-        DateTime(timezone=True),
-        nullable=False,
-        default=_utc_now,
-    ),
-)
-Index("idx_frame_texts_video_id", frame_texts.c.video_id)
-Index("idx_frame_texts_frame_id", frame_texts.c.frame_id)
 
 analyses = Table(
     "analyses",
@@ -242,46 +194,12 @@ watch_refreshes = Table(
     Column("errors", JSON, nullable=False, default=list),
 )
 
-
-# M006: creators registry
-creators = Table(
-    "creators",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("platform", String(32), nullable=False),
-    Column("platform_user_id", String(255), nullable=False),
-    Column("handle", String(255), nullable=True),          # non-unique (D-01)
-    Column("display_name", Text, nullable=True),
-    Column("profile_url", Text, nullable=True),
-    Column("avatar_url", Text, nullable=True),             # URL string only (D-05)
-    Column("follower_count", Integer, nullable=True),      # scalar (D-04)
-    Column("is_verified", Boolean, nullable=True),
-    Column("is_orphan", Boolean, nullable=False, default=False),
-    Column("first_seen_at", DateTime(timezone=True), nullable=True),
-    Column("last_seen_at", DateTime(timezone=True), nullable=True),
-    Column(
-        "created_at",
-        DateTime(timezone=True),
-        nullable=False,
-        default=_utc_now,
-    ),
-    # Compound UNIQUE on (platform, platform_user_id) — D-01 canonical
-    # identity. Same uploader_id on different platforms is allowed
-    # (no cross-platform identity resolution in M006).
-    UniqueConstraint(
-        "platform",
-        "platform_user_id",
-        name="uq_creators_platform_user_id",
-    ),
-)
-
-# Indexes on both sides of the creator<->video relationship.
-Index("idx_creators_handle", creators.c.platform, creators.c.handle)
-Index("idx_videos_creator_id", videos.c.creator_id)
-
-# M007: hashtag side table (D-05)
-hashtags = Table(
-    "hashtags",
+# M009: append-only engagement-counter snapshots (one row per probe).
+# The UNIQUE constraint at (video_id, captured_at) with second resolution
+# (D-01) ensures duplicate probes within the same second are silently
+# ignored via ON CONFLICT DO NOTHING in the adapter.
+video_stats = Table(
+    "video_stats",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column(
@@ -290,70 +208,15 @@ hashtags = Table(
         ForeignKey("videos.id", ondelete="CASCADE"),
         nullable=False,
     ),
-    # Canonical lowercase form without the leading "#" (D-04 exact match).
-    Column("tag", String(255), nullable=False),
-    Column(
-        "created_at",
-        DateTime(timezone=True),
-        nullable=False,
-        default=_utc_now,
-    ),
+    Column("captured_at", DateTime(timezone=True), nullable=False),
+    Column("view_count", Integer, nullable=True),
+    Column("like_count", Integer, nullable=True),
+    Column("repost_count", Integer, nullable=True),
+    Column("comment_count", Integer, nullable=True),
+    Column("save_count", Integer, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    UniqueConstraint("video_id", "captured_at", name="uq_video_stats_video_id_captured_at"),
 )
-Index("idx_hashtags_video_id", hashtags.c.video_id)
-Index("idx_hashtags_tag", hashtags.c.tag)
-
-# M007: mention side table (D-03, D-05). handle is canonical lowercase
-# without the leading "@". No creator_id FK (per D-03) — mention↔creator
-# linkage derivable via JOIN in M011 only.
-mentions = Table(
-    "mentions",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column(
-        "video_id",
-        Integer,
-        ForeignKey("videos.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("handle", String(255), nullable=False),
-    Column("platform", String(32), nullable=True),  # Platform | None (D-03)
-    Column(
-        "created_at",
-        DateTime(timezone=True),
-        nullable=False,
-        default=_utc_now,
-    ),
-)
-Index("idx_mentions_video_id", mentions.c.video_id)
-Index("idx_mentions_handle", mentions.c.handle)
-
-# M007: link side table (R044, D-02). url is the raw verbatim extract;
-# normalized_url is the dedup key (lowercase scheme+host, strip utm_*,
-# sorted query params). source ∈ {"description", "transcript", "ocr"}.
-links = Table(
-    "links",
-    metadata,
-    Column("id", Integer, primary_key=True, autoincrement=True),
-    Column(
-        "video_id",
-        Integer,
-        ForeignKey("videos.id", ondelete="CASCADE"),
-        nullable=False,
-    ),
-    Column("url", Text, nullable=False),
-    Column("normalized_url", Text, nullable=False),
-    Column("source", String(32), nullable=False),
-    Column("position_ms", Integer, nullable=True),
-    Column(
-        "created_at",
-        DateTime(timezone=True),
-        nullable=False,
-        default=_utc_now,
-    ),
-)
-Index("idx_links_video_id", links.c.video_id)
-Index("idx_links_normalized_url", links.c.normalized_url)
-Index("idx_links_source", links.c.source)
 
 
 # ---------------------------------------------------------------------------
@@ -373,32 +236,24 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
 )
 """
 
-_FTS5_FRAME_TEXTS_SQL = """
-CREATE VIRTUAL TABLE IF NOT EXISTS frame_texts_fts USING fts5(
-    frame_text_id UNINDEXED,
-    video_id UNINDEXED,
-    text,
-    tokenize = 'unicode61 remove_diacritics 2'
-)
-"""
-
 
 def init_db(engine: Engine) -> None:
-    """Create every table and the FTS5 virtual tables. Idempotent.
+    """Create every table and the FTS5 virtual table. Idempotent.
 
     Safe to call on every startup — :meth:`MetaData.create_all` uses
     ``CREATE TABLE IF NOT EXISTS`` under the hood, and the FTS5 DDL
-    plus the ``_ensure_*`` helpers both guard themselves against
-    double-execution on upgraded DBs.
+    guards itself the same way.
+
+    M009: also calls :func:`_ensure_video_stats_table` so that pre-M009
+    databases gain the ``video_stats`` table and its indexes on upgrade
+    without requiring a separate migration command. The named indexes are
+    created with ``IF NOT EXISTS`` so this is safe to call repeatedly.
     """
     metadata.create_all(engine)
     with engine.begin() as conn:
         _create_fts5(conn)
-        _create_frame_texts_fts(conn)
-        _ensure_videos_creator_id(conn)
-        _ensure_videos_metadata_columns(conn)
-        _ensure_videos_visual_columns(conn)
-        _ensure_frame_texts_table(conn)
+        _ensure_video_stats_table(conn)
+        _ensure_video_stats_indexes(conn)
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -406,125 +261,78 @@ def _create_fts5(conn: Connection) -> None:
     conn.execute(text(_FTS5_CREATE_SQL))
 
 
-def _ensure_videos_creator_id(conn: Connection) -> None:
-    """Add ``videos.creator_id`` on upgraded databases. Idempotent.
+def _ensure_video_stats_table(conn: Connection) -> None:
+    """Idempotent migration: create the ``video_stats`` table if absent.
 
-    M006/S01 adds a nullable FK column ``videos.creator_id``. On fresh
-    installs the Core ``metadata.create_all`` path declares the column
-    inline (see the ``videos`` Table definition above). On pre-M006
-    databases the ``videos`` table already exists, so ``create_all``
-    is a no-op — we must explicitly ALTER it.
+    Called by :func:`init_db` on every startup so pre-M009 databases are
+    upgraded automatically. The function is a no-op when the table already
+    exists (safe to call repeatedly).
 
-    SQLite supports ``ALTER TABLE ADD COLUMN ... REFERENCES`` as of
-    3.26 (2018). The inline ``ON DELETE SET NULL`` is honored because
-    ``PRAGMA foreign_keys`` is enabled on every connection by
-    ``sqlite_engine._apply_sqlite_pragmas``.
+    Indexes
+    -------
+    - ``idx_video_stats_video_id`` — speeds up ``WHERE video_id = ?`` queries.
+    - ``idx_video_stats_captured_at`` — speeds up time-window queries.
     """
-    cols = {
-        row[1]
-        for row in conn.execute(text("PRAGMA table_info(videos)"))
-    }
-    if "creator_id" in cols:
-        return
-    conn.execute(
-        text(
-            "ALTER TABLE videos ADD COLUMN creator_id INTEGER "
-            "REFERENCES creators(id) ON DELETE SET NULL"
-        )
-    )
-
-
-def _ensure_videos_metadata_columns(conn: Connection) -> None:
-    """Add M007 metadata columns on upgraded databases. Idempotent.
-
-    M007/S01 adds three nullable columns on ``videos``: ``description``,
-    ``music_track``, ``music_artist`` (per D-01 — no side entity). On
-    fresh installs the Core ``metadata.create_all`` path declares the
-    columns inline (see the ``videos`` Table definition above). On
-    pre-M007 databases the ``videos`` table already exists, so
-    ``create_all`` is a no-op — we must explicitly ALTER it for each
-    missing column.
-    """
-    cols = {
-        row[1]
-        for row in conn.execute(text("PRAGMA table_info(videos)"))
-    }
-    if "description" not in cols:
-        conn.execute(text("ALTER TABLE videos ADD COLUMN description TEXT"))
-    if "music_track" not in cols:
-        conn.execute(
-            text("ALTER TABLE videos ADD COLUMN music_track VARCHAR(255)")
-        )
-    if "music_artist" not in cols:
-        conn.execute(
-            text("ALTER TABLE videos ADD COLUMN music_artist VARCHAR(255)")
-        )
-
-
-def _create_frame_texts_fts(conn: Connection) -> None:
-    """Execute the frame_texts_fts FTS5 DDL on an existing connection."""
-    conn.execute(text(_FTS5_FRAME_TEXTS_SQL))
-
-
-def _ensure_videos_visual_columns(conn: Connection) -> None:
-    """Add M008 visual columns on upgraded databases. Idempotent.
-
-    M008/S01 adds two nullable columns on ``videos``:
-    ``thumbnail_key`` (storage key for the canonical thumbnail) and
-    ``content_shape`` (one of ``talking_head / broll / mixed /
-    unknown``). On fresh installs the Core ``metadata.create_all``
-    path declares the columns inline; on pre-M008 databases we must
-    explicitly ALTER.
-    """
-    cols = {
-        row[1]
-        for row in conn.execute(text("PRAGMA table_info(videos)"))
-    }
-    if "thumbnail_key" not in cols:
-        conn.execute(text("ALTER TABLE videos ADD COLUMN thumbnail_key TEXT"))
-    if "content_shape" not in cols:
-        conn.execute(
-            text("ALTER TABLE videos ADD COLUMN content_shape VARCHAR(32)")
-        )
-
-
-def _ensure_frame_texts_table(conn: Connection) -> None:
-    """Create frame_texts table on upgraded databases. Idempotent.
-
-    Fresh installs get the table via ``metadata.create_all``; pre-M008
-    databases hit this path.
-    """
-    tables = {
+    existing = {
         row[0]
         for row in conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='table'")
         )
     }
-    if "frame_texts" in tables:
+    if "video_stats" in existing:
         return
+
     conn.execute(
         text(
-            "CREATE TABLE frame_texts ("
-            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-            "video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE, "
-            "frame_id INTEGER NOT NULL REFERENCES frames(id) ON DELETE CASCADE, "
-            "text TEXT NOT NULL, "
-            "confidence REAL NOT NULL, "
-            "bbox TEXT, "
-            "created_at DATETIME NOT NULL"
-            ")"
+            """
+            CREATE TABLE video_stats (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id    INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                captured_at DATETIME NOT NULL,
+                view_count  INTEGER,
+                like_count  INTEGER,
+                repost_count INTEGER,
+                comment_count INTEGER,
+                save_count  INTEGER,
+                created_at  DATETIME NOT NULL,
+                CONSTRAINT uq_video_stats_video_id_captured_at
+                    UNIQUE (video_id, captured_at)
+            )
+            """
         )
     )
     conn.execute(
         text(
-            "CREATE INDEX IF NOT EXISTS idx_frame_texts_video_id "
-            "ON frame_texts(video_id)"
+            "CREATE INDEX IF NOT EXISTS idx_video_stats_video_id "
+            "ON video_stats (video_id)"
         )
     )
     conn.execute(
         text(
-            "CREATE INDEX IF NOT EXISTS idx_frame_texts_frame_id "
-            "ON frame_texts(frame_id)"
+            "CREATE INDEX IF NOT EXISTS idx_video_stats_captured_at "
+            "ON video_stats (captured_at)"
+        )
+    )
+
+
+def _ensure_video_stats_indexes(conn: Connection) -> None:
+    """Create named indexes on ``video_stats`` if they do not exist.
+
+    Uses ``CREATE INDEX IF NOT EXISTS`` so this is safe to call on every
+    startup regardless of whether the table was created by SQLAlchemy
+    ``metadata.create_all`` or by :func:`_ensure_video_stats_table`.
+    The ``CREATE INDEX IF NOT EXISTS`` syntax is idempotent.
+    """
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_video_stats_video_id "
+            "ON video_stats (video_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_video_stats_captured_at "
+            "ON video_stats (captured_at)"
         )
     )
 

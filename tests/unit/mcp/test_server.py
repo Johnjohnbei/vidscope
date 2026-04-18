@@ -126,17 +126,14 @@ class TestBuildMcpServer:
         server = build_mcp_server(sandboxed_container)
         assert server.name == "vidscope"
 
-    def test_server_registers_nine_tools(
+    def test_server_registers_six_tools(
         self, sandboxed_container: Container
     ) -> None:
         server = build_mcp_server(sandboxed_container)
         tools = asyncio.run(server.list_tools())
         names = {tool.name for tool in tools}
         assert names == {
-            "vidscope_get_creator",
-            "vidscope_get_frame_texts",
             "vidscope_ingest",
-            "vidscope_list_links",
             "vidscope_search",
             "vidscope_get_video",
             "vidscope_list_videos",
@@ -447,115 +444,3 @@ class TestVidscopeSuggestRelated:
             {"video_id": int(source_id), "limit": 1},
         )
         assert len(result["suggestions"]) <= 1
-
-
-# ---------------------------------------------------------------------------
-# vidscope_list_links
-# ---------------------------------------------------------------------------
-
-
-def _seed_video_with_links(container: Container) -> VideoId:
-    """Seed one video with description + transcript links."""
-    from vidscope.domain import Link, Platform, PlatformId, Video
-
-    with container.unit_of_work() as uow:
-        video = uow.videos.upsert_by_platform_id(
-            Video(
-                platform=Platform.YOUTUBE,
-                platform_id=PlatformId("links-test"),
-                url="https://www.youtube.com/shorts/links-test",
-                title="Links Test Video",
-                author="Links Author",
-                duration=30.0,
-                media_key="videos/youtube/links-test/media.mp4",
-            )
-        )
-        assert video.id is not None
-        video_id = video.id
-
-        uow.links.add_many_for_video(
-            video_id,
-            [
-                Link(
-                    video_id=video_id,
-                    url="https://example.com/desc",
-                    normalized_url="https://example.com/desc",
-                    source="description",
-                ),
-                Link(
-                    video_id=video_id,
-                    url="https://example.com/transcript",
-                    normalized_url="https://example.com/transcript",
-                    source="transcript",
-                    position_ms=5000,
-                ),
-            ],
-        )
-        return video_id
-
-
-class TestVidscopeListLinks:
-    def test_returns_found_true_with_links(
-        self, sandboxed_container: Container
-    ) -> None:
-        """vidscope_list_links(video_id=X) retourne found=True avec les liens."""
-        video_id = _seed_video_with_links(sandboxed_container)
-        server = build_mcp_server(sandboxed_container)
-        result = _call_tool(
-            server, "vidscope_list_links", {"video_id": int(video_id)}
-        )
-        assert result["found"] is True
-        assert result["video_id"] == int(video_id)
-        assert len(result["links"]) == 2
-        urls = {lk["url"] for lk in result["links"]}
-        assert "https://example.com/desc" in urls
-        assert "https://example.com/transcript" in urls
-        # Check required keys
-        for lk in result["links"]:
-            assert "url" in lk
-            assert "normalized_url" in lk
-            assert "source" in lk
-            assert "position_ms" in lk
-
-    def test_missing_video_returns_found_false(
-        self, sandboxed_container: Container
-    ) -> None:
-        """vidscope_list_links(video_id=999) → found=False, pas d'exception."""
-        server = build_mcp_server(sandboxed_container)
-        result = _call_tool(
-            server, "vidscope_list_links", {"video_id": 999}
-        )
-        assert result["found"] is False
-        assert result["video_id"] == 999
-
-    def test_source_filter_description_only(
-        self, sandboxed_container: Container
-    ) -> None:
-        """vidscope_list_links(video_id=X, source='description') filtre par source."""
-        video_id = _seed_video_with_links(sandboxed_container)
-        server = build_mcp_server(sandboxed_container)
-        result = _call_tool(
-            server,
-            "vidscope_list_links",
-            {"video_id": int(video_id), "source": "description"},
-        )
-        assert result["found"] is True
-        assert len(result["links"]) == 1
-        assert result["links"][0]["source"] == "description"
-        assert result["source_filter"] == "description"
-
-    def test_source_filter_transcript_only(
-        self, sandboxed_container: Container
-    ) -> None:
-        """vidscope_list_links(video_id=X, source='transcript') filtre par source."""
-        video_id = _seed_video_with_links(sandboxed_container)
-        server = build_mcp_server(sandboxed_container)
-        result = _call_tool(
-            server,
-            "vidscope_list_links",
-            {"video_id": int(video_id), "source": "transcript"},
-        )
-        assert result["found"] is True
-        assert len(result["links"]) == 1
-        assert result["links"][0]["source"] == "transcript"
-        assert result["links"][0]["position_ms"] == 5000

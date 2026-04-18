@@ -5,15 +5,10 @@ These tests must have no I/O and no third-party imports beyond pytest.
 
 from __future__ import annotations
 
-import re
-
 from vidscope.domain.values import (
-    ContentShape,
-    CreatorId,
     Language,
     Platform,
     PlatformId,
-    PlatformUserId,
     RunStatus,
     StageName,
     VideoId,
@@ -35,22 +30,6 @@ class TestPlatform:
         assert names == {"INSTAGRAM", "TIKTOK", "YOUTUBE"}
 
 
-class TestContentShape:
-    def test_content_shape_exhaustive(self) -> None:
-        assert {s.value for s in ContentShape} == {
-            "talking_head",
-            "broll",
-            "mixed",
-            "unknown",
-        }
-
-    def test_content_shape_members_are_snake_case(self) -> None:
-        for shape in ContentShape:
-            assert re.match(r"^[a-z_]+$", shape.value), (
-                f"ContentShape.{shape.name} value {shape.value!r} is not snake_case"
-            )
-
-
 class TestStageName:
     def test_execution_order_is_declaration_order(self) -> None:
         order = list(StageName)
@@ -59,26 +38,13 @@ class TestStageName:
             StageName.TRANSCRIBE,
             StageName.FRAMES,
             StageName.ANALYZE,
-            StageName.VISUAL_INTELLIGENCE,
-            StageName.METADATA_EXTRACT,
             StageName.INDEX,
+            StageName.STATS,  # M009: standalone stats-probe stage
         ]
 
     def test_string_values_match_names_lowercased(self) -> None:
         for stage in StageName:
             assert stage.value == stage.name.lower()
-
-    def test_stage_name_has_visual_intelligence(self) -> None:
-        assert StageName.VISUAL_INTELLIGENCE.value == "visual_intelligence"
-        assert [s.value for s in StageName] == [
-            "ingest",
-            "transcribe",
-            "frames",
-            "analyze",
-            "visual_intelligence",
-            "metadata_extract",
-            "index",
-        ]
 
 
 class TestRunStatus:
@@ -111,26 +77,3 @@ class TestNewTypes:
         pid = PlatformId("abc123")
         assert pid == "abc123"
         assert isinstance(pid, str)
-
-
-class TestCreatorId:
-    def test_is_int_newtype(self) -> None:
-        cid = CreatorId(42)
-        assert cid == 42
-        assert isinstance(cid, int)
-
-    def test_round_trip_preserves_value(self) -> None:
-        assert int(CreatorId(0)) == 0
-        assert int(CreatorId(999_999)) == 999_999
-
-
-class TestPlatformUserId:
-    def test_is_str_newtype(self) -> None:
-        puid = PlatformUserId("UC123")
-        assert puid == "UC123"
-        assert isinstance(puid, str)
-
-    def test_accepts_empty_string(self) -> None:
-        # NewType is type-level only; empty strings are legal at
-        # runtime. Adapter-layer validation handles rejection.
-        assert PlatformUserId("") == ""

@@ -30,15 +30,11 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from vidscope.ports.repositories import (
     AnalysisRepository,
-    CreatorRepository,
     FrameRepository,
-    FrameTextRepository,
-    HashtagRepository,
-    LinkRepository,
-    MentionRepository,
     PipelineRunRepository,
     TranscriptRepository,
     VideoRepository,
+    VideoStatsRepository,
     WatchAccountRepository,
     WatchRefreshRepository,
 )
@@ -62,19 +58,15 @@ class UnitOfWork(Protocol):
     on a clean :meth:`__exit__`, and roll back if any exception bubbles up.
     """
 
-    creators: CreatorRepository
     videos: VideoRepository
     transcripts: TranscriptRepository
     frames: FrameRepository
-    frame_texts: FrameTextRepository
     analyses: AnalysisRepository
-    hashtags: HashtagRepository
-    mentions: MentionRepository
-    links: LinkRepository
     pipeline_runs: PipelineRunRepository
     search_index: SearchIndex
     watch_accounts: WatchAccountRepository
     watch_refreshes: WatchRefreshRepository
+    video_stats: VideoStatsRepository
 
     def __enter__(self) -> UnitOfWork:
         ...

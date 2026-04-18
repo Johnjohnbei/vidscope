@@ -36,13 +36,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Protocol, TypedDict, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from vidscope.domain import (
     Analysis,
     Frame,
     Language,
-    Mention,
     Platform,
     PlatformId,
     Transcript,
@@ -53,7 +52,6 @@ from vidscope.ports.unit_of_work import UnitOfWork
 __all__ = [
     "Analyzer",
     "ChannelEntry",
-    "CreatorInfo",
     "Downloader",
     "FrameExtractor",
     "IngestOutcome",
@@ -155,47 +153,6 @@ class Stage(Protocol):
 # ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# Creator metadata extracted at ingest time (D-01)
-# ---------------------------------------------------------------------------
-
-
-class CreatorInfo(TypedDict):
-    """Creator metadata carried alongside a successful ingest.
-
-    Populated by :class:`Downloader` implementations from the yt-dlp
-    ``info_dict`` without any extra network call. Consumed by
-    :class:`IngestStage` to construct a :class:`~vidscope.domain.Creator`
-    and upsert it via :attr:`UnitOfWork.creators` before the video row
-    write (per D-04: single UoW transaction).
-
-    Fields mirror the subset of ``ProbeResult`` that populates a
-    :class:`Creator`:
-
-    - ``platform_user_id`` comes from yt-dlp's ``uploader_id`` — the
-      platform-stable id that survives renames (D-01 canonical UNIQUE key).
-    - ``handle`` and ``display_name`` both come from yt-dlp's ``uploader``
-      today (MAY diverge later if yt-dlp exposes a separate handle field).
-    - ``profile_url`` ← ``uploader_url``
-    - ``avatar_url`` ← ``uploader_thumbnail`` (first URL when yt-dlp returns a list)
-    - ``follower_count`` ← ``channel_follower_count``
-    - ``is_verified`` ← ``channel_verified`` / ``uploader_verified`` (rare)
-
-    When ``Downloader`` cannot extract ``uploader_id`` (empty or absent),
-    the whole :class:`CreatorInfo` is set to ``None`` on
-    :attr:`IngestOutcome.creator_info` (D-02: ingest succeeds with
-    ``creator_id=NULL``).
-    """
-
-    platform_user_id: str
-    handle: str | None
-    display_name: str | None
-    profile_url: str | None
-    avatar_url: str | None
-    follower_count: int | None
-    is_verified: bool | None
-
-
 @dataclass(frozen=True, slots=True)
 class IngestOutcome:
     """Result of a successful ingest operation.
@@ -203,21 +160,6 @@ class IngestOutcome:
     ``media_path`` is a real on-disk path produced by the downloader.
     The ingest stage copies it into :class:`MediaStorage` and discards
     the original.
-
-    ``creator_info`` is populated when yt-dlp exposes ``uploader_id``
-    (the D-01 canonical UNIQUE key on ``creators``). ``None`` is a
-    legitimate outcome for compilations, playlists without a single
-    uploader, and extractors that don't expose an uploader (M006 D-02:
-    ingest succeeds with ``creator_id=NULL``).
-
-    ``description``, ``hashtags``, ``mentions``, ``music_track``,
-    ``music_artist`` are M007 additions (R043, R045). Every field is
-    optional with a safe default so M006 callers keep working without
-    modification. Per M007 D-01 the caption + music are persisted on
-    the ``videos`` row directly (no side entity); per D-05 the
-    hashtags and mentions land in side tables. Each field is ``None``
-    / empty tuple when the platform does not expose it — NEVER a
-    synthesised placeholder (per R045).
     """
 
     platform: Platform
@@ -229,12 +171,6 @@ class IngestOutcome:
     duration: float | None = None
     upload_date: str | None = None
     view_count: int | None = None
-    creator_info: CreatorInfo | None = None
-    description: str | None = None
-    hashtags: tuple[str, ...] = ()
-    mentions: tuple[Mention, ...] = ()
-    music_track: str | None = None
-    music_artist: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,9 +193,7 @@ class ProbeResult:
 
     The probe is a metadata-only call (no media download, no transcribe,
     no DB write) used by ``vidscope cookies test`` to verify that the
-    configured cookies actually authenticate against a gated platform,
-    and by the M006 backfill script to recover creator metadata from
-    already-ingested videos.
+    configured cookies actually authenticate against a gated platform.
 
     Attributes
     ----------
@@ -273,40 +207,12 @@ class ProbeResult:
     title:
         Resolved video title when ``status == ProbeStatus.OK``, ``None``
         otherwise.
-    uploader:
-        yt-dlp's ``uploader`` field — the human-friendly creator name
-        (e.g. "MrBeast"). ``None`` when the extractor does not expose it.
-        Consumed by the M006 backfill script to populate
-        ``Creator.display_name``.
-    uploader_id:
-        yt-dlp's ``uploader_id`` field — the platform-stable id that
-        survives renames. Consumed by the M006 backfill script to
-        populate ``Creator.platform_user_id`` (the canonical UNIQUE key).
-    uploader_url:
-        Creator profile URL. Consumed as ``Creator.profile_url``.
-    channel_follower_count:
-        Current follower count when yt-dlp exposes it. Consumed as
-        ``Creator.follower_count`` (per D-04: scalar only, no
-        time-series — M009 owns temporal data).
-    uploader_thumbnail:
-        Creator avatar URL (first URL if yt-dlp returns a list).
-        Consumed as ``Creator.avatar_url`` (per D-05: string only,
-        no image download).
-    uploader_verified:
-        Verified-badge flag when exposed. Not consistently populated
-        across extractors — ``None`` is normal.
     """
 
     status: ProbeStatus
     url: str
     detail: str
     title: str | None = None
-    uploader: str | None = None
-    uploader_id: str | None = None
-    uploader_url: str | None = None
-    channel_follower_count: int | None = None
-    uploader_thumbnail: str | None = None
-    uploader_verified: bool | None = None
 
 
 class ProbeStatus(StrEnum):

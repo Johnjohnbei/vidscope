@@ -30,37 +30,27 @@ from typing import Protocol, runtime_checkable
 
 from vidscope.domain import (
     Analysis,
-    Creator,
-    CreatorId,
     Frame,
-    FrameText,
-    Hashtag,
-    Link,
-    Mention,
     PipelineRun,
     Platform,
     PlatformId,
-    PlatformUserId,
     RunStatus,
     StageName,
     Transcript,
     Video,
     VideoId,
+    VideoStats,
     WatchedAccount,
     WatchRefresh,
 )
 
 __all__ = [
     "AnalysisRepository",
-    "CreatorRepository",
     "FrameRepository",
-    "FrameTextRepository",
-    "HashtagRepository",
-    "LinkRepository",
-    "MentionRepository",
     "PipelineRunRepository",
     "TranscriptRepository",
     "VideoRepository",
+    "VideoStatsRepository",
     "WatchAccountRepository",
     "WatchRefreshRepository",
 ]
@@ -85,26 +75,10 @@ class VideoRepository(Protocol):
         """
         ...
 
-    def upsert_by_platform_id(
-        self, video: Video, creator: Creator | None = None
-    ) -> Video:
+    def upsert_by_platform_id(self, video: Video) -> Video:
         """Insert ``video`` or update the existing row matching
         ``(platform, platform_id)``. Returns the resulting entity with
-        ``id`` populated. Idempotent.
-
-        When ``creator`` is provided, the repository structurally enforces
-        the write-through cache on ``videos.author`` (D-03): within the
-        same SQL statement, ``video.author = creator.display_name`` and
-        ``video.creator_id = int(creator.id)``. Application code MUST NOT
-        write ``video.author`` directly — the repository is the single
-        source of truth for the cache.
-
-        When ``creator`` is None (the default), the existing behavior is
-        preserved: ``video.author`` is taken from the ``video`` argument
-        as-is, ``video.creator_id`` is left untouched. This keeps M001–M005
-        callers working without modification until M006/S02 wires creators
-        through the ingest stage.
-        """
+        ``id`` populated. Idempotent."""
         ...
 
     def get(self, video_id: VideoId) -> Video | None:
@@ -121,42 +95,8 @@ class VideoRepository(Protocol):
         """Return the ``limit`` most recently ingested videos, newest first."""
         ...
 
-    def list_by_creator(
-        self, creator_id: CreatorId, *, limit: int = 50
-    ) -> list[Video]:
-        """Return up to ``limit`` videos whose ``creator_id`` FK matches
-        ``creator_id``, ordered most recently ingested first.
-
-        Returns an empty list when no videos are linked to this creator.
-        Callers should resolve the creator by handle first via
-        :meth:`CreatorRepository.find_by_handle`.
-        """
-        ...
-
-    def count_by_creator(self, creator_id: CreatorId) -> int:
-        """Return the total number of videos linked to ``creator_id``."""
-        ...
-
     def count(self) -> int:
         """Return the total number of videos in the store."""
-        ...
-
-    def update_visual_metadata(
-        self,
-        video_id: VideoId,
-        *,
-        thumbnail_key: str | None,
-        content_shape: str | None,
-    ) -> None:
-        """Update ``videos.thumbnail_key`` and ``videos.content_shape``
-        for ``video_id`` in one UPDATE. Other columns are preserved
-        (no wide row-rewrite).
-
-        Raises
-        ------
-        StorageError
-            When no video row matches ``video_id``.
-        """
         ...
 
 
@@ -337,259 +277,47 @@ class WatchRefreshRepository(Protocol):
 
 
 @runtime_checkable
-class CreatorRepository(Protocol):
-    """Persistence for :class:`~vidscope.domain.entities.Creator`.
+class VideoStatsRepository(Protocol):
+    """Append-only persistence for :class:`VideoStats` snapshots.
 
-    Identity anchors on ``(platform, platform_user_id)`` — the
-    platform-stable id that survives account renames (per D-01).
-    ``creators.id`` remains a surrogate autoincrement INT PK so FKs
-    and CLI arguments stay ergonomic. ``handle`` is stored but NOT
-    unique — the @-name may change, and the repository upserts
-    through ``platform_user_id`` only.
-
-    Adapters must enforce the compound UNIQUE constraint on
-    ``(platform, platform_user_id)`` via :meth:`upsert`.
+    Each row represents one point-in-time measurement of engagement
+    counters. Rows are never updated — new measurements create new rows.
+    The UNIQUE constraint on ``(video_id, captured_at)`` at second
+    resolution silently ignores duplicate probes within the same second
+    (D-01, D031 append-only invariant).
     """
 
-    def upsert(self, creator: Creator) -> Creator:
-        """Insert ``creator`` or update the existing row matching
-        ``(platform, platform_user_id)``. Returns the resulting
-        entity with ``id`` populated. Idempotent.
+    def append(self, stats: VideoStats) -> VideoStats:
+        """Insert ``stats`` and return it with ``id`` populated.
 
-        Fields present on ``creator`` overwrite the existing row;
-        ``created_at`` and ``first_seen_at`` are preserved on update
-        (archaeology), ``last_seen_at`` is refreshed.
+        If a row with the same ``(video_id, captured_at)`` already exists,
+        the insert is silently ignored (ON CONFLICT DO NOTHING) and the
+        original row is returned. This keeps the operation idempotent.
         """
         ...
 
-    def get(self, creator_id: CreatorId) -> Creator | None:
-        """Return the creator with ``id == creator_id``, or ``None``."""
-        ...
+    def list_for_video(self, video_id: VideoId, *, limit: int = 100) -> list[VideoStats]:
+        """Return up to ``limit`` snapshots for ``video_id``, oldest first.
 
-    def find_by_platform_user_id(
-        self, platform: Platform, platform_user_id: PlatformUserId
-    ) -> Creator | None:
-        """Return the creator matching ``(platform, platform_user_id)``
-        or ``None``. This is the canonical identity lookup (per D-01)."""
-        ...
-
-    def find_by_handle(
-        self, platform: Platform, handle: str
-    ) -> Creator | None:
-        """Return the creator matching ``(platform, handle)`` or ``None``.
-
-        Handle is non-unique across time (rename history) but unique at
-        any given moment per platform. On handle collisions (shouldn't
-        happen in practice because handles are platform-enforced
-        unique), return the most recently seen row.
+        Ordered by ``captured_at`` ascending so callers can directly feed
+        the result to :func:`~vidscope.domain.metrics.views_velocity_24h`.
         """
         ...
 
-    def list_by_platform(
-        self, platform: Platform, *, limit: int = 50
-    ) -> list[Creator]:
-        """Return up to ``limit`` creators on ``platform``, most
-        recently seen first."""
-        ...
-
-    def list_by_min_followers(
-        self, min_count: int, *, limit: int = 50
-    ) -> list[Creator]:
-        """Return up to ``limit`` creators with
-        ``follower_count >= min_count``, highest-follower first. Rows
-        where ``follower_count IS NULL`` are excluded."""
-        ...
-
-    def count(self) -> int:
-        """Return the total number of creators in the store."""
-        ...
-
-
-@runtime_checkable
-class HashtagRepository(Protocol):
-    """Persistence for :class:`~vidscope.domain.entities.Hashtag`.
-
-    Hashtags are stored in a side table keyed by ``(video_id, tag)``.
-    ``tag`` is the canonical lowercase form WITHOUT the leading ``#``
-    (per M007 D-04). The repository applies the canonicalisation
-    itself — callers pass raw tags from yt-dlp's ``info["tags"]``
-    (already lowercase-ish but not always) and the adapter calls
-    ``.lower().lstrip("#")`` before writing.
-    """
-
-    def replace_for_video(self, video_id: VideoId, tags: list[str]) -> None:
-        """Replace every hashtag row for ``video_id`` with ``tags``.
-
-        Implemented as DELETE then INSERT — idempotent on re-ingest,
-        the whole list is the new truth. Empty ``tags`` removes every
-        row for the video. Each tag is canonicalised by the adapter
-        (lowercase + strip leading '#') before insertion.
-        """
-        ...
-
-    def list_for_video(self, video_id: VideoId) -> list[Hashtag]:
-        """Return every hashtag row for ``video_id`` ordered by id asc.
-
-        Empty list on miss — never raises.
-        """
-        ...
-
-    def find_video_ids_by_tag(
-        self, tag: str, *, limit: int = 50
-    ) -> list[VideoId]:
-        """Return up to ``limit`` video ids whose hashtags include ``tag``.
-
-        ``tag`` is canonicalised by the repository before comparison so
-        callers can pass ``"#Coding"`` or ``"coding"`` interchangeably
-        (per D-04). Used by the search facet ``--hashtag`` via
-        EXISTS subquery (M007/S04).
-        """
-        ...
-
-
-@runtime_checkable
-class MentionRepository(Protocol):
-    """Persistence for :class:`~vidscope.domain.entities.Mention`.
-
-    Mentions are stored in a side table keyed by
-    ``(video_id, handle)``. ``handle`` is the canonical lowercase form
-    WITHOUT the leading ``@``. ``platform`` is optional per D-03. No
-    ``creator_id`` FK — mention↔creator linkage is derivable via JOIN
-    in M011.
-    """
-
-    def replace_for_video(
-        self, video_id: VideoId, mentions: list[Mention]
-    ) -> None:
-        """Replace every mention row for ``video_id`` with ``mentions``.
-
-        Implemented as DELETE then INSERT — idempotent on re-ingest.
-        Empty list removes every row for the video. The repository
-        canonicalises each mention's ``handle`` (lowercase + strip
-        leading '@') before insertion.
-        """
-        ...
-
-    def list_for_video(self, video_id: VideoId) -> list[Mention]:
-        """Return every mention row for ``video_id`` ordered by id asc.
-
-        Empty list on miss — never raises.
-        """
-        ...
-
-    def find_video_ids_by_handle(
-        self, handle: str, *, limit: int = 50
-    ) -> list[VideoId]:
-        """Return up to ``limit`` video ids mentioning ``handle``.
-
-        ``handle`` is canonicalised before comparison (case-insensitive
-        per D-04). Used by the search facet ``--mention`` via EXISTS
-        subquery (M007/S04).
-        """
-        ...
-
-
-@runtime_checkable
-class LinkRepository(Protocol):
-    """Persistence for :class:`~vidscope.domain.entities.Link`.
-
-    Links are stored in a side table keyed by
-    ``(video_id, normalized_url, source)``. ``source`` is one of
-    ``"description"``, ``"transcript"``, ``"ocr"``. The repository
-    deduplicates on ``normalized_url`` within a single
-    :meth:`add_many_for_video` call but does NOT enforce cross-call
-    uniqueness — a URL may appear multiple times in the same video
-    via different sources (once from description, once from
-    transcript).
-    """
-
-    def add_many_for_video(
-        self, video_id: VideoId, links: list[Link]
-    ) -> list[Link]:
-        """Insert every link for ``video_id`` atomically.
-
-        Deduplicates by ``(normalized_url, source)`` within the call.
-        Empty ``links`` is a no-op. Returns the persisted entities
-        with ``id`` populated.
-        """
-        ...
-
-    def list_for_video(
-        self, video_id: VideoId, *, source: str | None = None
-    ) -> list[Link]:
-        """Return every link for ``video_id``, optionally filtered by
-        ``source``. Ordered by ``id`` asc (insertion order).
-
-        Empty list on miss — never raises.
-        """
+    def latest_for_video(self, video_id: VideoId) -> VideoStats | None:
+        """Return the most recent snapshot for ``video_id``, or ``None``."""
         ...
 
     def has_any_for_video(self, video_id: VideoId) -> bool:
-        """Return ``True`` when at least one link exists for
-        ``video_id``. Used by :meth:`MetadataExtractStage.is_satisfied`
-        for resume-safe pipeline replay (M007/S03).
-        """
+        """Return ``True`` if at least one snapshot exists for ``video_id``."""
         ...
 
-    def find_video_ids_with_any_link(
-        self, *, limit: int = 50
+    def list_videos_with_min_snapshots(
+        self, min_snapshots: int = 2, *, limit: int = 200
     ) -> list[VideoId]:
-        """Return up to ``limit`` video ids that have at least one link.
+        """Return ids of videos that have at least ``min_snapshots`` rows.
 
-        Used by the search facet ``--has-link`` via EXISTS subquery
-        (M007/S04).
-        """
-        ...
-
-
-@runtime_checkable
-class FrameTextRepository(Protocol):
-    """Persistence for :class:`~vidscope.domain.entities.FrameText`.
-
-    Side table keyed by ``(frame_id, id)`` with FK cascade on
-    ``frames.id`` AND ``videos.id`` (denormalised). The repository
-    owns the FTS5 sync: every insert into ``frame_texts`` also
-    inserts into ``frame_texts_fts``, every delete cascades
-    through both. Pattern mirrors :class:`SearchIndex`.
-    """
-
-    def add_many_for_frame(
-        self,
-        frame_id: int,
-        video_id: VideoId,
-        texts: list[FrameText],
-    ) -> list[FrameText]:
-        """Insert every text row for ``frame_id`` atomically.
-
-        Empty ``texts`` is a no-op. Returns the persisted entities
-        with ``id`` populated. The adapter MUST also sync each
-        inserted row into ``frame_texts_fts``.
-        """
-        ...
-
-    def list_for_video(self, video_id: VideoId) -> list[FrameText]:
-        """Return every frame text for ``video_id`` ordered by
-        ``frame_id`` asc then ``id`` asc. Empty list on miss —
-        never raises.
-        """
-        ...
-
-    def has_any_for_video(self, video_id: VideoId) -> bool:
-        """Return ``True`` when at least one frame text exists for
-        ``video_id``. Used by
-        :meth:`VisualIntelligenceStage.is_satisfied`.
-        """
-        ...
-
-    def find_video_ids_by_text(
-        self, query: str, *, limit: int = 50
-    ) -> list[VideoId]:
-        """Return up to ``limit`` distinct video ids whose
-        on-screen text matches ``query`` via FTS5 MATCH on
-        ``frame_texts_fts``.
-
-        ``query`` is passed through to FTS5 as-is (callers MUST
-        ensure it is a valid FTS5 query string — a bare word is
-        always valid). Empty list on miss — never raises.
+        Used by the velocity-computation use case (S04) to identify
+        videos eligible for trend analysis.
         """
         ...

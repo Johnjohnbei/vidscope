@@ -43,16 +43,14 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from vidscope.application import (
-    GetCreatorUseCase,
     GetStatusUseCase,
     IngestVideoUseCase,
-    ListLinksUseCase,
     ListVideosUseCase,
     SearchLibraryUseCase,
     ShowVideoUseCase,
     SuggestRelatedUseCase,
 )
-from vidscope.domain import Creator, DomainError, Platform, Video, VideoId
+from vidscope.domain import DomainError, Video, VideoId
 from vidscope.infrastructure.container import Container
 
 __all__ = ["build_mcp_server", "main"]
@@ -61,23 +59,6 @@ __all__ = ["build_mcp_server", "main"]
 # ---------------------------------------------------------------------------
 # DTO → dict helpers
 # ---------------------------------------------------------------------------
-
-
-def _creator_to_dict(creator: Creator) -> dict[str, Any]:
-    """Convert a Creator entity to a JSON-serializable dict."""
-    return {
-        "id": int(creator.id) if creator.id is not None else None,
-        "platform": creator.platform.value,
-        "platform_user_id": str(creator.platform_user_id),
-        "handle": creator.handle,
-        "display_name": creator.display_name,
-        "profile_url": creator.profile_url,
-        "avatar_url": creator.avatar_url,
-        "follower_count": creator.follower_count,
-        "is_verified": creator.is_verified,
-        "first_seen_at": creator.first_seen_at.isoformat() if creator.first_seen_at else None,
-        "last_seen_at": creator.last_seen_at.isoformat() if creator.last_seen_at else None,
-    }
 
 
 def _video_to_dict(video: Video) -> dict[str, Any]:
@@ -302,137 +283,6 @@ def build_mcp_server(container: Container) -> FastMCP:
                     "retry_count": run.retry_count,
                 }
                 for run in result.runs
-            ],
-        }
-
-    @mcp.tool()
-    def vidscope_get_creator(
-        handle: str, platform: str = "youtube"
-    ) -> dict[str, Any]:
-        """Return the full profile of a creator identified by handle.
-
-        ``handle`` is the human-facing @-name (e.g. ``"@alice"`` or
-        ``"alice"`` — both work). ``platform`` is one of ``youtube``,
-        ``tiktok``, or ``instagram`` (default: ``youtube``).
-
-        Returns ``{"found": False, "handle": handle}`` when no creator
-        matches — never raises on a miss.
-        """
-        try:
-            plat = Platform(platform.lower())
-        except ValueError:
-            raise ValueError(
-                f"unknown platform '{platform}'. Valid values: youtube, tiktok, instagram"
-            ) from None
-
-        try:
-            use_case = GetCreatorUseCase(
-                unit_of_work_factory=container.unit_of_work
-            )
-            result = use_case.execute(plat, handle)
-        except DomainError as exc:
-            raise ValueError(str(exc)) from exc
-
-        if not result.found or result.creator is None:
-            return {"found": False, "handle": handle, "platform": platform}
-
-        return {
-            "found": True,
-            "creator": _creator_to_dict(result.creator),
-        }
-
-    @mcp.tool()
-    def vidscope_list_links(
-        video_id: int, source: str | None = None
-    ) -> dict[str, Any]:
-        """List URLs extracted from a video's description + transcript.
-
-        Returns every :class:`Link` persisted by the
-        :class:`MetadataExtractStage` (M007/S03). ``source`` optionally
-        filters by origin: ``"description"`` for caption-sourced URLs,
-        ``"transcript"`` for transcript-sourced, ``"ocr"`` reserved
-        for M008. Omit ``source`` to get every URL.
-
-        Returns ``{"found": False, "video_id": video_id, "links": []}``
-        when no video matches the id — never raises on a miss.
-        """
-        try:
-            use_case = ListLinksUseCase(
-                unit_of_work_factory=container.unit_of_work
-            )
-            result = use_case.execute(video_id, source=source)
-        except DomainError as exc:
-            raise ValueError(str(exc)) from exc
-
-        if not result.found:
-            return {
-                "found": False,
-                "video_id": video_id,
-                "links": [],
-            }
-
-        return {
-            "found": True,
-            "video_id": result.video_id,
-            "source_filter": source,
-            "links": [
-                {
-                    "id": link.id,
-                    "url": link.url,
-                    "normalized_url": link.normalized_url,
-                    "source": link.source,
-                    "position_ms": link.position_ms,
-                }
-                for link in result.links
-            ],
-        }
-
-    @mcp.tool()
-    def vidscope_get_frame_texts(video_id: int) -> dict[str, Any]:
-        """Return OCR-extracted on-screen text for a video's frames
-        (M008/R047).
-
-        Each entry carries the raw text, OCR confidence score, the
-        parent frame id, and its timestamp in milliseconds (joined
-        from the ``frames`` table). Results are ordered by
-        ``frame_id`` ascending then insertion order.
-
-        Returns ``{"found": False, "video_id": video_id, "frame_texts": []}``
-        when no video matches the id — never raises on a miss.
-        """
-        try:
-            use_case = ShowVideoUseCase(
-                unit_of_work_factory=container.unit_of_work
-            )
-            result = use_case.execute(video_id)
-        except DomainError as exc:
-            raise ValueError(str(exc)) from exc
-
-        if not result.found:
-            return {
-                "found": False,
-                "video_id": video_id,
-                "frame_texts": [],
-            }
-
-        # Build a frame_id → timestamp_ms lookup for the JOIN.
-        frame_ts: dict[int, int] = {}
-        for f in result.frames:
-            if f.id is not None:
-                frame_ts[int(f.id)] = int(f.timestamp_ms)
-
-        return {
-            "found": True,
-            "video_id": video_id,
-            "frame_texts": [
-                {
-                    "id": int(ft.id) if ft.id is not None else None,
-                    "frame_id": int(ft.frame_id),
-                    "text": ft.text,
-                    "confidence": float(ft.confidence),
-                    "timestamp_ms": frame_ts.get(int(ft.frame_id)),
-                }
-                for ft in result.frame_texts
             ],
         }
 

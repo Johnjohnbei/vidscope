@@ -13,5 +13,6 @@ single file plus its tests.
 from __future__ import annotations
 
 from vidscope.adapters.ytdlp.downloader import YtdlpDownloader
+from vidscope.adapters.ytdlp.ytdlp_stats_probe import YtdlpStatsProbe
 
-__all__ = ["YtdlpDownloader"]
+__all__ = ["YtdlpDownloader", "YtdlpStatsProbe"]

@@ -19,9 +19,7 @@ from vidscope import __version__
 from vidscope.cli.commands import (
     add_command,
     cookies_app,
-    creator_app,
     doctor_command,
-    links_command,
     list_command,
     mcp_app,
     search_command,
@@ -94,8 +92,6 @@ app.command(
     "doctor",
     help="Run startup checks (ffmpeg, yt-dlp) and print a report.",
 )(doctor_command)
-app.command("links", help="List extracted URLs for a video.")(links_command)
 app.add_typer(mcp_app, name="mcp")
 app.add_typer(watch_app, name="watch")
 app.add_typer(cookies_app, name="cookies")
-app.add_typer(creator_app, name="creator")
