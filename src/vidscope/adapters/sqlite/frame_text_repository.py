@@ -55,24 +55,27 @@ class FrameTextRepositorySQLite:
                         "created_at": now,
                     }
                 )
-            result = self._conn.execute(
+            # Count pre-existing rows so WR-01 can target only newly inserted ones.
+            count_before = len(self._list_by_frame(frame_id))
+            self._conn.execute(
                 frame_texts_table.insert().values(payloads)
             )
-            if result.rowcount is None or result.rowcount == 0:
-                raise StorageError(
-                    f"add_many_for_frame: insert acknowledged but no rows "
-                    f"written for frame {int(frame_id)}"
-                )
-        except StorageError:
-            raise
         except SQLAlchemyError as exc:
             raise StorageError(
                 f"add_many_for_frame failed for frame {int(frame_id)}: {exc}",
                 cause=exc,
             ) from exc
 
-        # Re-query the inserted rows to capture their ids + sync FTS5.
-        inserted = self._list_by_frame(frame_id)
+        # Re-query for ids; slice to newly inserted rows only (WR-01 + WR-05).
+        # rowcount is dialect-unreliable for bulk inserts — the re-query is
+        # the ground truth (WR-05).
+        all_rows = self._list_by_frame(frame_id)
+        inserted = all_rows[count_before:]
+        if not inserted:
+            raise StorageError(
+                f"add_many_for_frame: insert acknowledged but no rows "
+                f"retrieved for frame {int(frame_id)}"
+            )
         # Sync into frame_texts_fts. Use raw SQL — FTS5 is not a Core
         # Table so we cannot use insert().values().
         for row in inserted:
