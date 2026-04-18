@@ -4,7 +4,7 @@
 
 VidScope is a personal video-intelligence tool. Given a URL to a public video on Instagram, TikTok, or YouTube, it downloads the media locally, transcribes the audio, extracts representative frames, produces a structured analysis of the content, and stores everything in a searchable local database. It exposes both a CLI (`vidscope add <url>`, `vidscope search <query>`) and — in later milestones — an MCP server so an AI agent can query and enrich the library during conversation.
 
-M001 (single-URL pipeline), M002 (MCP server + related-video suggestions), M003 (account monitoring + scheduled refresh), M004 (pluggable LLM analyzers), and M005 (cookies UX improvements) are complete. **A second wave (M006–M011) is planned and scoped** to remove all grey zones in the captured data: first-class Creator entity, rich caption/link/hashtag/music metadata, visual intelligence on frames, engagement time-series and velocity, multi-dimensional scoring with controlled taxonomy, and a personal veille workflow layer (tracking, tags, collections, exports).
+M001 (single-URL pipeline), M002 (MCP server + related-video suggestions), M003 (account monitoring + scheduled refresh), M004 (pluggable LLM analyzers), and M005 (cookies UX improvements) are complete. **All planned milestones are done.**
 
 ## Core Value
 
@@ -35,7 +35,7 @@ A single command turns a video URL into a searchable, analyzable record on the l
 
 **Cookies feature:** users export `cookies.txt` from a logged-in browser once, then `vidscope cookies set <path>` installs it after format validation, `vidscope cookies test` verifies it authenticates against Instagram via a metadata-only probe (no real ingest required), and `vidscope add` surfaces a typed `CookieAuthError` with actionable remediation when the session expires. Full guide in `docs/cookies.md`.
 
-**Next:** M001–M005 complete. M006–M011 scoped in `.gsd/milestones/M006..M011/M0xx-ROADMAP.md`; start with M006 (Creator-as-first-class-entity), which is the structural prerequisite for every subsequent data-quality improvement. Other future work remains additive: semantic search (R026), expanded auth scenarios, polish passes.
+**Next:** All 5 planned milestones are complete. Future work would be additive: semantic search (R026), expanded auth scenarios (Instagram stories, TikTok drafts), or a polish pass on the rich CLI output.
 
 ## Architecture / Key Patterns
 
@@ -79,9 +79,3 @@ See `.gsd/REQUIREMENTS.md` for the explicit capability contract, requirement sta
 - [x] M003: Account monitoring and scheduled refresh — declare public accounts, refresh via manual command or cron, batch-process new videos
 - [x] M004: Pluggable analyzer providers (NVIDIA, Groq, OpenRouter, OpenAI, Anthropic) — opt-in richer analysis beyond local heuristics
 - [x] M005: Cookies UX polish — vidscope cookies set/status/test/clear, CookieAuthError remediation, browser walkthrough docs
-- [ ] M006: Creator-as-first-class-entity — `creators` table, FK from `videos`, `vidscope creator show/list/videos`, MCP tool
-- [ ] M007: Rich content metadata — captions verbatim, hashtags, mentions, music track, URL extraction from caption + transcript
-- [ ] M008: Visual intelligence on frames — local OCR, canonical thumbnail, content-shape heuristic (talking-head vs B-roll), OCR-discovered links
-- [ ] M009: Engagement signals + velocity — append-only `video_stats` time-series, `vidscope refresh-stats`, `vidscope trending`
-- [ ] M010: Multi-dimensional scoring + taxonomy — score vector (info density / actionability / novelty / production / sentiment), `is_sponsored`, `content_type`, controlled vertical taxonomy, per-row reasoning
-- [ ] M011: Veille workflow layer — tracking (status/star/notes), tags, collections, facetted search, exports (JSON/Markdown/CSV)

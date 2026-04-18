@@ -58,7 +58,9 @@ __all__ = [
     "analyses",
     "creators",
     "frames",
+    "hashtags",
     "init_db",
+    "mentions",
     "metadata",
     "pipeline_runs",
     "transcripts",
@@ -100,6 +102,9 @@ videos = Table(
         ForeignKey("creators.id", ondelete="SET NULL"),
         nullable=True,
     ),
+    Column("description", Text, nullable=True),
+    Column("music_track", String(255), nullable=True),
+    Column("music_artist", String(255), nullable=True),
 )
 
 transcripts = Table(
@@ -238,6 +243,54 @@ creators = Table(
 Index("idx_creators_handle", creators.c.platform, creators.c.handle)
 Index("idx_videos_creator_id", videos.c.creator_id)
 
+# M007: hashtag side table (D-05)
+hashtags = Table(
+    "hashtags",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "video_id",
+        Integer,
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    # Canonical lowercase form without the leading "#" (D-04 exact match).
+    Column("tag", String(255), nullable=False),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utc_now,
+    ),
+)
+Index("idx_hashtags_video_id", hashtags.c.video_id)
+Index("idx_hashtags_tag", hashtags.c.tag)
+
+# M007: mention side table (D-03, D-05). handle is canonical lowercase
+# without the leading "@". No creator_id FK (per D-03) — mention↔creator
+# linkage derivable via JOIN in M011 only.
+mentions = Table(
+    "mentions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "video_id",
+        Integer,
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("handle", String(255), nullable=False),
+    Column("platform", String(32), nullable=True),  # Platform | None (D-03)
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utc_now,
+    ),
+)
+Index("idx_mentions_video_id", mentions.c.video_id)
+Index("idx_mentions_handle", mentions.c.handle)
+
 
 # ---------------------------------------------------------------------------
 # FTS5 virtual table DDL
@@ -262,13 +315,14 @@ def init_db(engine: Engine) -> None:
 
     Safe to call on every startup — :meth:`MetaData.create_all` uses
     ``CREATE TABLE IF NOT EXISTS`` under the hood, and the FTS5 DDL
-    plus the ``_ensure_videos_creator_id`` helper both guard
-    themselves against double-execution on upgraded DBs.
+    plus the ``_ensure_*`` helpers both guard themselves against
+    double-execution on upgraded DBs.
     """
     metadata.create_all(engine)
     with engine.begin() as conn:
         _create_fts5(conn)
         _ensure_videos_creator_id(conn)
+        _ensure_videos_metadata_columns(conn)
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -302,6 +356,33 @@ def _ensure_videos_creator_id(conn: Connection) -> None:
             "REFERENCES creators(id) ON DELETE SET NULL"
         )
     )
+
+
+def _ensure_videos_metadata_columns(conn: Connection) -> None:
+    """Add M007 metadata columns on upgraded databases. Idempotent.
+
+    M007/S01 adds three nullable columns on ``videos``: ``description``,
+    ``music_track``, ``music_artist`` (per D-01 — no side entity). On
+    fresh installs the Core ``metadata.create_all`` path declares the
+    columns inline (see the ``videos`` Table definition above). On
+    pre-M007 databases the ``videos`` table already exists, so
+    ``create_all`` is a no-op — we must explicitly ALTER it for each
+    missing column.
+    """
+    cols = {
+        row[1]
+        for row in conn.execute(text("PRAGMA table_info(videos)"))
+    }
+    if "description" not in cols:
+        conn.execute(text("ALTER TABLE videos ADD COLUMN description TEXT"))
+    if "music_track" not in cols:
+        conn.execute(
+            text("ALTER TABLE videos ADD COLUMN music_track VARCHAR(255)")
+        )
+    if "music_artist" not in cols:
+        conn.execute(
+            text("ALTER TABLE videos ADD COLUMN music_artist VARCHAR(255)")
+        )
 
 
 # Re-export a type alias used by tests that want to introspect row maps
