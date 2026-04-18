@@ -16,6 +16,7 @@ that rule mechanically.
 from __future__ import annotations
 
 from vidscope.ports.clock import Clock
+from vidscope.ports.link_extractor import LinkExtractor, RawLink
 from vidscope.ports.pipeline import (
     Analyzer,
     ChannelEntry,
@@ -37,6 +38,7 @@ from vidscope.ports.repositories import (
     CreatorRepository,
     FrameRepository,
     HashtagRepository,
+    LinkRepository,
     MentionRepository,
     PipelineRunRepository,
     TranscriptRepository,
@@ -59,12 +61,15 @@ __all__ = [
     "FrameRepository",
     "HashtagRepository",
     "IngestOutcome",
+    "LinkExtractor",
+    "LinkRepository",
     "MediaStorage",
     "MentionRepository",
     "PipelineContext",
     "PipelineRunRepository",
     "ProbeResult",
     "ProbeStatus",
+    "RawLink",
     "SearchIndex",
     "SearchResult",
     "Stage",

@@ -37,6 +37,7 @@ __all__ = [
     "Creator",
     "Frame",
     "Hashtag",
+    "Link",
     "Mention",
     "PipelineRun",
     "Transcript",
@@ -308,5 +309,39 @@ class Mention:
     video_id: VideoId
     handle: str
     platform: Platform | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Link:
+    """A URL extracted from a video's text surfaces (description,
+    transcript, OCR).
+
+    Stored in a side table keyed by ``(video_id, normalized_url, source)``.
+    ``url`` is the raw string as captured by the extractor (strip
+    trailing punctuation but preserve the original case and query
+    params). ``normalized_url`` is the deduplication key: lowercase
+    scheme+host, strip ``utm_*`` query params, strip fragment, sorted
+    query params (see M007/S02 ``URLNormalizer``). Per M007 D-02, no
+    HEAD resolver runs at ingest — short URLs (t.co, bit.ly) are
+    stored as-is and resolved later if and when M008/M011 adds that
+    capability.
+
+    ``source`` identifies where the URL was found: ``"description"``
+    for captions captured at ingest, ``"transcript"`` for URLs
+    surfaced in the transcript after TranscribeStage, and ``"ocr"``
+    reserved for M008/S02 (OCR-sourced on-screen URLs). ``position_ms``
+    is populated for transcript/OCR sources when a timestamp is
+    available; ``None`` for caption-sourced URLs.
+
+    ``id`` is ``None`` until the repository persists the row.
+    """
+
+    video_id: VideoId
+    url: str
+    normalized_url: str
+    source: str
+    position_ms: int | None = None
     id: int | None = None
     created_at: datetime | None = None

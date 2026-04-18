@@ -60,6 +60,7 @@ __all__ = [
     "frames",
     "hashtags",
     "init_db",
+    "links",
     "mentions",
     "metadata",
     "pipeline_runs",
@@ -290,6 +291,34 @@ mentions = Table(
 )
 Index("idx_mentions_video_id", mentions.c.video_id)
 Index("idx_mentions_handle", mentions.c.handle)
+
+# M007: link side table (R044, D-02). url is the raw verbatim extract;
+# normalized_url is the dedup key (lowercase scheme+host, strip utm_*,
+# sorted query params). source ∈ {"description", "transcript", "ocr"}.
+links = Table(
+    "links",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "video_id",
+        Integer,
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("url", Text, nullable=False),
+    Column("normalized_url", Text, nullable=False),
+    Column("source", String(32), nullable=False),
+    Column("position_ms", Integer, nullable=True),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utc_now,
+    ),
+)
+Index("idx_links_video_id", links.c.video_id)
+Index("idx_links_normalized_url", links.c.normalized_url)
+Index("idx_links_source", links.c.source)
 
 
 # ---------------------------------------------------------------------------

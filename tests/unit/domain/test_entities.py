@@ -15,6 +15,7 @@ from vidscope.domain.entities import (
     Creator,
     Frame,
     Hashtag,
+    Link,
     Mention,
     PipelineRun,
     Transcript,
@@ -417,3 +418,50 @@ class TestMention:
         a = Mention(video_id=VideoId(1), handle="alice", platform=Platform.TIKTOK)
         b = Mention(video_id=VideoId(1), handle="alice", platform=Platform.TIKTOK)
         assert a == b
+
+
+class TestLink:
+    def _minimal(self) -> Link:
+        return Link(
+            video_id=VideoId(1),
+            url="https://example.com/path",
+            normalized_url="https://example.com/path",
+            source="description",
+        )
+
+    def test_minimal_link_has_defaults(self) -> None:
+        ln = self._minimal()
+        assert ln.video_id == VideoId(1)
+        assert ln.source == "description"
+        assert ln.position_ms is None
+        assert ln.id is None
+        assert ln.created_at is None
+
+    def test_link_is_frozen(self) -> None:
+        ln = self._minimal()
+        with pytest.raises(FrozenInstanceError):
+            ln.url = "other"  # type: ignore[misc]
+
+    def test_link_uses_slots(self) -> None:
+        ln = self._minimal()
+        assert not hasattr(ln, "__dict__")
+
+    def test_link_preserves_raw_url_and_normalized_distinctly(self) -> None:
+        ln = Link(
+            video_id=VideoId(1),
+            url="https://Example.COM/Path?utm_source=x",
+            normalized_url="https://example.com/Path",
+            source="description",
+        )
+        assert ln.url == "https://Example.COM/Path?utm_source=x"
+        assert ln.normalized_url == "https://example.com/Path"
+
+    def test_link_accepts_position_ms(self) -> None:
+        ln = Link(
+            video_id=VideoId(1),
+            url="https://example.com",
+            normalized_url="https://example.com",
+            source="transcript",
+            position_ms=12_345,
+        )
+        assert ln.position_ms == 12_345

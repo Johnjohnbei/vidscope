@@ -34,6 +34,7 @@ from vidscope.domain import (
     CreatorId,
     Frame,
     Hashtag,
+    Link,
     Mention,
     PipelineRun,
     Platform,
@@ -53,6 +54,7 @@ __all__ = [
     "CreatorRepository",
     "FrameRepository",
     "HashtagRepository",
+    "LinkRepository",
     "MentionRepository",
     "PipelineRunRepository",
     "TranscriptRepository",
@@ -463,5 +465,58 @@ class MentionRepository(Protocol):
         ``handle`` is canonicalised before comparison (case-insensitive
         per D-04). Used by the search facet ``--mention`` via EXISTS
         subquery (M007/S04).
+        """
+        ...
+
+
+@runtime_checkable
+class LinkRepository(Protocol):
+    """Persistence for :class:`~vidscope.domain.entities.Link`.
+
+    Links are stored in a side table keyed by
+    ``(video_id, normalized_url, source)``. ``source`` is one of
+    ``"description"``, ``"transcript"``, ``"ocr"``. The repository
+    deduplicates on ``normalized_url`` within a single
+    :meth:`add_many_for_video` call but does NOT enforce cross-call
+    uniqueness — a URL may appear multiple times in the same video
+    via different sources (once from description, once from
+    transcript).
+    """
+
+    def add_many_for_video(
+        self, video_id: VideoId, links: list[Link]
+    ) -> list[Link]:
+        """Insert every link for ``video_id`` atomically.
+
+        Deduplicates by ``(normalized_url, source)`` within the call.
+        Empty ``links`` is a no-op. Returns the persisted entities
+        with ``id`` populated.
+        """
+        ...
+
+    def list_for_video(
+        self, video_id: VideoId, *, source: str | None = None
+    ) -> list[Link]:
+        """Return every link for ``video_id``, optionally filtered by
+        ``source``. Ordered by ``id`` asc (insertion order).
+
+        Empty list on miss — never raises.
+        """
+        ...
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        """Return ``True`` when at least one link exists for
+        ``video_id``. Used by :meth:`MetadataExtractStage.is_satisfied`
+        for resume-safe pipeline replay (M007/S03).
+        """
+        ...
+
+    def find_video_ids_with_any_link(
+        self, *, limit: int = 50
+    ) -> list[VideoId]:
+        """Return up to ``limit`` video ids that have at least one link.
+
+        Used by the search facet ``--has-link`` via EXISTS subquery
+        (M007/S04).
         """
         ...
