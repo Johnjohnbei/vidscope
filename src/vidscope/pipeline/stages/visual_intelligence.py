@@ -82,7 +82,17 @@ def classify_content_shape(face_counts: list[int]) -> ContentShape:
 
 
 class VisualIntelligenceStage:
-    """Sixth stage — OCR every frame + extract on-screen URLs."""
+    """Sixth stage — OCR every frame + thumbnail copy + content_shape.
+
+    In a single pass over each frame:
+    - Extracts text via :class:`OcrEngine` (R047)
+    - Counts faces via :class:`FaceCounter` (R049)
+    - After the loop: copies the middle frame to the canonical thumbnail
+      key ``videos/{platform}/{platform_id}/thumb.jpg`` (R048)
+    - Classifies :class:`ContentShape` from face counts (R049)
+    - Persists both visual-metadata columns via
+      :meth:`VideoRepository.update_visual_metadata` (R048+R049)
+    """
 
     name: str = StageName.VISUAL_INTELLIGENCE.value
 
@@ -90,11 +100,13 @@ class VisualIntelligenceStage:
         self,
         *,
         ocr_engine: OcrEngine,
+        face_counter: FaceCounter,
         link_extractor: LinkExtractor,
         media_storage: MediaStorage,
         min_confidence: float = 0.5,
     ) -> None:
         self._ocr = ocr_engine
+        self._face_counter = face_counter
         self._extractor = link_extractor
         self._media_storage = media_storage
         self._min_confidence = min_confidence
@@ -104,13 +116,29 @@ class VisualIntelligenceStage:
     # ------------------------------------------------------------------
 
     def is_satisfied(self, ctx: PipelineContext, uow: UnitOfWork) -> bool:
-        """Return True when frame_texts already exist for this video."""
+        """Return True when the stage's full output is in place:
+        (a) at least one :class:`FrameText` row for the video,
+        (b) ``videos.thumbnail_key`` is populated,
+        (c) ``videos.content_shape`` is populated.
+
+        Any missing piece forces re-execution. This guarantees a
+        half-completed run (e.g. OCR succeeded but process died
+        before face-count) eventually finishes on the next invocation.
+        """
         if ctx.video_id is None:
             return False
-        return uow.frame_texts.has_any_for_video(ctx.video_id)
+        if not uow.frame_texts.has_any_for_video(ctx.video_id):
+            return False
+        video = uow.videos.get(ctx.video_id)
+        if video is None:
+            return False
+        return (
+            video.thumbnail_key is not None
+            and video.content_shape is not None
+        )
 
     def execute(self, ctx: PipelineContext, uow: UnitOfWork) -> StageResult:
-        """Run OCR on each frame, persist text, extract + persist links.
+        """Run OCR + face-count on each frame, copy thumbnail, persist results.
 
         Raises
         ------
@@ -132,25 +160,20 @@ class VisualIntelligenceStage:
 
         total_text_blocks = 0
         all_ocr_links: list[Link] = []
-        # Track frames that received at least one OcrLine — used
-        # for SKIPPED detection when the engine is unavailable.
         frames_with_text = 0
+        face_counts: list[int] = []
 
         for frame in frames:
             if frame.id is None:
-                # Defensive: FramesStage persists via add_many which
-                # populates ids; a None here would be a contract
-                # violation upstream. Skip rather than fail.
                 _logger.warning(
-                    "visual_intelligence: frame without id for video %s, "
-                    "skipping",
+                    "visual_intelligence: frame without id for video %s, skipping",
                     ctx.video_id,
                 )
                 continue
 
             try:
                 resolved = self._media_storage.resolve(frame.image_key)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 _logger.warning(
                     "visual_intelligence: failed to resolve %s for video %s: %s",
                     frame.image_key,
@@ -160,17 +183,18 @@ class VisualIntelligenceStage:
                 continue
 
             frame_path = resolved if isinstance(resolved, Path) else Path(str(resolved))
-            lines = self._ocr.extract_text(
-                str(frame_path), min_confidence=self._min_confidence
-            )
+            path_str = str(frame_path)
+
+            # Face count (R049) — one call per frame. Returns 0 on
+            # any failure (missing cv2, corrupt image, etc.).
+            face_counts.append(self._face_counter.count_faces(path_str))
+
+            # OCR (R047) — same file, same pass.
+            lines = self._ocr.extract_text(path_str, min_confidence=self._min_confidence)
             if not lines:
                 continue
             frames_with_text += 1
 
-            # Persist the text blocks for this frame. One UoW-scoped
-            # insert per frame is fine — frames are at most 30 per
-            # video so worst case is 30 small inserts inside one
-            # transaction.
             frame_texts = [
                 FrameText(
                     video_id=ctx.video_id,
@@ -181,13 +205,9 @@ class VisualIntelligenceStage:
                 )
                 for line in lines
             ]
-            uow.frame_texts.add_many_for_frame(
-                frame.id, ctx.video_id, frame_texts
-            )
+            uow.frame_texts.add_many_for_frame(frame.id, ctx.video_id, frame_texts)
             total_text_blocks += len(frame_texts)
 
-            # Feed the concatenated text through LinkExtractor. Each
-            # produced RawLink inherits position_ms from this frame.
             concatenated = " ".join(line.text for line in lines)
             for raw in self._extractor.extract(concatenated, source="ocr"):
                 all_ocr_links.append(
@@ -200,21 +220,57 @@ class VisualIntelligenceStage:
                     )
                 )
 
-        # Persist all OCR-sourced links in one batched insert. The
-        # LinkRepository dedups by (normalized_url, source) within
-        # the call — same URL across multiple frames becomes ONE
-        # row (position_ms is the first-seen frame's timestamp).
-        persisted_links = uow.links.add_many_for_video(
-            ctx.video_id, all_ocr_links
+        # Persist all OCR-sourced links in one batched insert.
+        persisted_links = uow.links.add_many_for_video(ctx.video_id, all_ocr_links)
+
+        # --- R048: thumbnail copy from the middle frame ---
+        thumbnail_key: str | None = None
+        if frames:
+            middle_idx = len(frames) // 2
+            middle_frame = frames[middle_idx]
+            try:
+                source_path = self._media_storage.resolve(middle_frame.image_key)
+                source_path = (
+                    source_path
+                    if isinstance(source_path, Path)
+                    else Path(str(source_path))
+                )
+                suffix = source_path.suffix or ".jpg"
+                platform_segment = ctx.platform.value if ctx.platform else "unknown"
+                id_segment = str(ctx.platform_id or ctx.video_id)
+                # T-M008-S03-01 defensive: reject path-traversal in id_segment
+                if "/" in id_segment or ".." in id_segment:
+                    _logger.warning(
+                        "visual_intelligence: suspicious platform_id %r for video %s, "
+                        "skipping thumbnail copy",
+                        id_segment,
+                        ctx.video_id,
+                    )
+                    thumbnail_key = None
+                else:
+                    thumb_key = f"videos/{platform_segment}/{id_segment}/thumb{suffix}"
+                    # T-M008-S03-06 defensive: never store empty string
+                    stored_key = self._media_storage.store(thumb_key, source_path)
+                    thumbnail_key = stored_key if stored_key else None
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning(
+                    "visual_intelligence: thumbnail copy failed for video %s: %s",
+                    ctx.video_id,
+                    exc,
+                )
+                thumbnail_key = None
+
+        # --- R049: content_shape classification ---
+        shape = classify_content_shape(face_counts)
+
+        # --- Persist both visual-metadata columns ---
+        uow.videos.update_visual_metadata(
+            ctx.video_id,
+            thumbnail_key=thumbnail_key,
+            content_shape=shape.value,
         )
 
-        # Graceful-degradation detection: if NO frame produced any
-        # text, the OCR engine is either (a) unavailable/not installed
-        # or (b) simply saw no text (valid B-roll case). We cannot
-        # distinguish (a) from (b) purely from the result — the
-        # OcrEngine port returns [] in both cases by contract. We
-        # peek at a sentinel attribute (_unavailable) when present;
-        # otherwise we report the empty result as a normal success.
+        # Graceful-degradation detection (from S02-P01, preserved).
         engine_marked_unavailable = getattr(self._ocr, "_unavailable", False)
         if frames_with_text == 0 and engine_marked_unavailable:
             return StageResult(
@@ -227,12 +283,16 @@ class VisualIntelligenceStage:
 
         if total_text_blocks == 0:
             return StageResult(
-                message=f"OCR produced no text for {len(frames)} frames"
+                message=(
+                    f"OCR produced no text for {len(frames)} frames; "
+                    f"content_shape={shape.value}, thumbnail={'yes' if thumbnail_key else 'no'}"
+                )
             )
 
         return StageResult(
             message=(
                 f"extracted {total_text_blocks} text block(s), "
-                f"{len(persisted_links)} link(s) across {len(frames)} frame(s)"
+                f"{len(persisted_links)} link(s) across {len(frames)} frame(s); "
+                f"content_shape={shape.value}, thumbnail={'yes' if thumbnail_key else 'no'}"
             )
         )

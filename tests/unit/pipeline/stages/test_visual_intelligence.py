@@ -25,6 +25,7 @@ from vidscope.domain import (
     Link,
     Platform,
     PlatformId,
+    Video,
     VideoId,
 )
 from vidscope.pipeline.stages import VisualIntelligenceStage
@@ -156,12 +157,79 @@ class _FakeUoW:
         pass
 
 
+class _FakeFaceCounter:
+    def __init__(self, results: dict[str, int] | None = None) -> None:
+        self._results = results or {}
+        self.calls: list[str] = []
+
+    def count_faces(self, image_path: str) -> int:
+        self.calls.append(image_path)
+        return self._results.get(image_path, 0)
+
+
 class _FakeMediaStorage:
     def __init__(self, base: Path) -> None:
         self._base = base
+        self.stored: list[tuple[str, Path]] = []
 
     def resolve(self, key: str) -> Path:
         return self._base / key
+
+    def store(self, key: str, source_path: Path) -> str:
+        self.stored.append((key, source_path))
+        return key
+
+
+@dataclass
+class _FakeVideoRepo:
+    videos: dict[int, Video] = field(default_factory=dict)
+
+    def add(self, video: Video) -> Video:
+        new_id = VideoId(len(self.videos) + 1)
+        stored = Video(
+            platform=video.platform,
+            platform_id=video.platform_id,
+            url=video.url,
+            id=new_id,
+        )
+        self.videos[int(new_id)] = stored
+        return stored
+
+    def get(self, video_id: VideoId) -> Video | None:
+        return self.videos.get(int(video_id))
+
+    def update_visual_metadata(
+        self,
+        video_id: VideoId,
+        *,
+        thumbnail_key: str | None,
+        content_shape: str | None,
+    ) -> None:
+        v = self.videos.get(int(video_id))
+        if v is None:
+            raise ValueError(f"video {video_id} not found")
+        self.videos[int(video_id)] = Video(
+            platform=v.platform,
+            platform_id=v.platform_id,
+            url=v.url,
+            id=v.id,
+            thumbnail_key=thumbnail_key,
+            content_shape=content_shape,
+        )
+
+
+@dataclass
+class _FakeUoW:
+    frames: _FakeFrameRepo
+    frame_texts: _FakeFrameTextRepo
+    links: _FakeLinkRepo
+    videos: _FakeVideoRepo = field(default_factory=_FakeVideoRepo)
+
+    def __enter__(self) -> _FakeUoW:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -179,12 +247,15 @@ def _ctx(video_id: int = 1) -> PipelineContext:
 
 def _stage(
     engine: OcrEngine | None = None,
+    face_counter: _FakeFaceCounter | None = None,
     tmp_path: Path | None = None,
 ) -> tuple[VisualIntelligenceStage, _FakeUoW]:
     engine = engine or _FakeOcrEngine()
+    counter = face_counter or _FakeFaceCounter()
     media = _FakeMediaStorage(tmp_path or Path("/tmp"))
     stage = VisualIntelligenceStage(
         ocr_engine=engine,
+        face_counter=counter,
         link_extractor=RegexLinkExtractor(),
         media_storage=media,
     )
@@ -192,6 +263,15 @@ def _stage(
         frames=_FakeFrameRepo(),
         frame_texts=_FakeFrameTextRepo(),
         links=_FakeLinkRepo(),
+        videos=_FakeVideoRepo(),
+    )
+    # Always seed the target video (video_id=1) since the stage now calls
+    # update_visual_metadata on it.
+    uow.videos.videos[1] = Video(
+        platform=Platform.YOUTUBE,
+        platform_id=PlatformId("abc"),
+        url="u",
+        id=VideoId(1),
     )
     return stage, uow
 
@@ -261,12 +341,27 @@ class TestIsSatisfied:
         stage, uow = _stage()
         assert stage.is_satisfied(_ctx(), uow) is False  # type: ignore[arg-type]
 
-    def test_returns_true_when_frame_texts_exist(self) -> None:
+    def test_returns_true_when_all_outputs_present(self) -> None:
+        # S03: compound check — frame_texts + thumbnail_key + content_shape
         stage, uow = _stage()
         uow.frame_texts.rows.append(
             FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=0.9, id=1)
         )
+        uow.videos.update_visual_metadata(
+            VideoId(1),
+            thumbnail_key="videos/youtube/abc/thumb.jpg",
+            content_shape="broll",
+        )
         assert stage.is_satisfied(_ctx(), uow) is True  # type: ignore[arg-type]
+
+    def test_returns_false_when_frame_texts_exist_but_thumbnail_missing(self) -> None:
+        # Half-completed run: OCR done but thumbnail not yet copied
+        stage, uow = _stage()
+        uow.frame_texts.rows.append(
+            FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=0.9, id=1)
+        )
+        # thumbnail_key and content_shape still None
+        assert stage.is_satisfied(_ctx(), uow) is False  # type: ignore[arg-type]
 
 
 class TestExecuteContractViolations:
@@ -404,12 +499,19 @@ class TestExecuteUnavailableEngine:
 class TestExecuteMediaResolutionErrors:
     def test_resolve_exception_is_skipped_per_frame(self, tmp_path: Path) -> None:
         class _BrokenStorage:
+            stored: list[tuple[str, Path]] = []
+
             def resolve(self, key: str) -> Path:
                 raise RuntimeError("disk unplugged")
+
+            def store(self, key: str, source_path: Path) -> str:
+                self.stored.append((key, source_path))
+                return key
 
         engine = _FakeOcrEngine()
         stage = VisualIntelligenceStage(
             ocr_engine=engine,
+            face_counter=_FakeFaceCounter(),
             link_extractor=RegexLinkExtractor(),
             media_storage=_BrokenStorage(),  # type: ignore[arg-type]
         )
@@ -417,6 +519,13 @@ class TestExecuteMediaResolutionErrors:
             frames=_FakeFrameRepo(),
             frame_texts=_FakeFrameTextRepo(),
             links=_FakeLinkRepo(),
+            videos=_FakeVideoRepo(),
+        )
+        uow.videos.videos[1] = Video(
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId("abc"),
+            url="u",
+            id=VideoId(1),
         )
         uow.frames.frames.append(
             Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=500, id=1)
@@ -425,3 +534,143 @@ class TestExecuteMediaResolutionErrors:
         # No crash — just skipped frame, returned as empty result
         assert result.skipped is False
         assert len(uow.frame_texts.rows) == 0
+
+
+# ---------------------------------------------------------------------------
+# T02 new test classes: thumbnail copy, content_shape, compound is_satisfied
+# ---------------------------------------------------------------------------
+
+
+class TestThumbnail:
+    def test_middle_frame_copied_odd_count(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        for i, ts in enumerate([0, 1000, 2000, 3000, 4000]):
+            uow.frames.frames.append(
+                Frame(video_id=VideoId(1), image_key=f"f/{i}.jpg", timestamp_ms=ts, id=i + 1)
+            )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        stored_keys = [k for k, _ in stage._media_storage.stored]  # type: ignore[attr-defined]
+        # 5 frames, middle_idx=2 → f/2.jpg → key ends with thumb.jpg
+        assert any(k.endswith("/thumb.jpg") for k in stored_keys)
+
+    def test_middle_frame_copied_even_count(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        for i, ts in enumerate([0, 1000, 2000, 3000]):
+            uow.frames.frames.append(
+                Frame(video_id=VideoId(1), image_key=f"f/{i}.jpg", timestamp_ms=ts, id=i + 1)
+            )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        # N=4, middle_idx=2 → source is f/2.jpg
+        sources = [s for _, s in stage._media_storage.stored]  # type: ignore[attr-defined]
+        assert any("2.jpg" in str(s) for s in sources)
+
+    def test_single_frame_used_as_thumbnail(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        uow.frames.frames.append(
+            Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=500, id=1)
+        )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        sources = [s for _, s in stage._media_storage.stored]  # type: ignore[attr-defined]
+        assert any("0.jpg" in str(s) for s in sources)
+
+    def test_thumbnail_key_format(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        uow.frames.frames.append(
+            Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=0, id=1)
+        )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        stored_keys = [k for k, _ in stage._media_storage.stored]  # type: ignore[attr-defined]
+        assert any(k == "videos/youtube/abc/thumb.jpg" for k in stored_keys)
+
+    def test_videos_thumbnail_key_updated(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        uow.frames.frames.append(
+            Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=0, id=1)
+        )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        v = uow.videos.get(VideoId(1))
+        assert v is not None
+        assert v.thumbnail_key == "videos/youtube/abc/thumb.jpg"
+
+
+class TestContentShape:
+    def test_no_frames_leaves_video_untouched(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        # No frames → skipped, content_shape not updated
+        result = stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        assert result.skipped is True
+        v = uow.videos.get(VideoId(1))
+        assert v is not None
+        assert v.content_shape is None
+
+    def test_all_frames_have_faces_classified_talking_head(self, tmp_path: Path) -> None:
+        counter = _FakeFaceCounter(
+            {str(tmp_path / f"f/{i}.jpg"): 1 for i in range(3)}
+        )
+        stage, uow = _stage(face_counter=counter, tmp_path=tmp_path)
+        for i in range(3):
+            uow.frames.frames.append(
+                Frame(video_id=VideoId(1), image_key=f"f/{i}.jpg", timestamp_ms=i * 1000, id=i + 1)
+            )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        v = uow.videos.get(VideoId(1))
+        assert v is not None
+        assert v.content_shape == "talking_head"
+
+    def test_no_faces_anywhere_classified_broll(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)  # default counter returns 0 for all
+        for i in range(3):
+            uow.frames.frames.append(
+                Frame(video_id=VideoId(1), image_key=f"f/{i}.jpg", timestamp_ms=i * 1000, id=i + 1)
+            )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        v = uow.videos.get(VideoId(1))
+        assert v is not None
+        assert v.content_shape == "broll"
+
+    def test_partial_face_presence_classified_mixed(self, tmp_path: Path) -> None:
+        counter = _FakeFaceCounter({str(tmp_path / "f/0.jpg"): 1})
+        stage, uow = _stage(face_counter=counter, tmp_path=tmp_path)
+        for i in range(5):  # 1/5 = 20% < 40%
+            uow.frames.frames.append(
+                Frame(video_id=VideoId(1), image_key=f"f/{i}.jpg", timestamp_ms=i * 1000, id=i + 1)
+            )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        v = uow.videos.get(VideoId(1))
+        assert v is not None
+        assert v.content_shape == "mixed"
+
+    def test_face_counter_called_per_frame(self, tmp_path: Path) -> None:
+        counter = _FakeFaceCounter()
+        stage, uow = _stage(face_counter=counter, tmp_path=tmp_path)
+        for i in range(4):
+            uow.frames.frames.append(
+                Frame(video_id=VideoId(1), image_key=f"f/{i}.jpg", timestamp_ms=i * 1000, id=i + 1)
+            )
+        stage.execute(_ctx(), uow)  # type: ignore[arg-type]
+        assert len(counter.calls) == 4
+
+
+class TestCompoundIsSatisfied:
+    def test_not_satisfied_when_frame_texts_missing(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        # video exists, no frame_texts
+        assert stage.is_satisfied(_ctx(), uow) is False  # type: ignore[arg-type]
+
+    def test_not_satisfied_when_thumbnail_key_is_none(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        uow.frame_texts.rows.append(
+            FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=0.9, id=1)
+        )
+        # thumbnail_key still None on the video
+        assert stage.is_satisfied(_ctx(), uow) is False  # type: ignore[arg-type]
+
+    def test_satisfied_when_all_three_present(self, tmp_path: Path) -> None:
+        stage, uow = _stage(tmp_path=tmp_path)
+        uow.frame_texts.rows.append(
+            FrameText(video_id=VideoId(1), frame_id=1, text="x", confidence=0.9, id=1)
+        )
+        uow.videos.update_visual_metadata(
+            VideoId(1), thumbnail_key="videos/yt/abc/thumb.jpg", content_shape="mixed"
+        )
+        assert stage.is_satisfied(_ctx(), uow) is True  # type: ignore[arg-type]
