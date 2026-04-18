@@ -35,6 +35,9 @@ from vidscope.adapters.sqlite.watch_account_repository import (
     WatchAccountRepositorySQLite,
 )
 from vidscope.adapters.sqlite.video_stats_repository import VideoStatsRepositorySQLite
+from vidscope.adapters.sqlite.video_tracking_repository import (
+    VideoTrackingRepositorySQLite,
+)
 from vidscope.adapters.sqlite.watch_refresh_repository import (
     WatchRefreshRepositorySQLite,
 )
@@ -47,6 +50,7 @@ from vidscope.ports import (
     TranscriptRepository,
     VideoRepository,
     VideoStatsRepository,
+    VideoTrackingRepository,
     WatchAccountRepository,
     WatchRefreshRepository,
 )
@@ -81,6 +85,7 @@ class SqliteUnitOfWork:
         self.watch_accounts: WatchAccountRepository
         self.watch_refreshes: WatchRefreshRepository
         self.video_stats: VideoStatsRepository
+        self.video_tracking: VideoTrackingRepository
 
     def __enter__(self) -> SqliteUnitOfWork:
         if self._connection is not None:
@@ -97,6 +102,7 @@ class SqliteUnitOfWork:
         self.watch_accounts = WatchAccountRepositorySQLite(self._connection)
         self.watch_refreshes = WatchRefreshRepositorySQLite(self._connection)
         self.video_stats = VideoStatsRepositorySQLite(self._connection)
+        self.video_tracking = VideoTrackingRepositorySQLite(self._connection)
 
         return self
 

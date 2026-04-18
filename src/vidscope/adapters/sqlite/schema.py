@@ -61,6 +61,7 @@ __all__ = [
     "pipeline_runs",
     "transcripts",
     "video_stats",
+    "video_tracking",
     "videos",
     "watch_refreshes",
     "watched_accounts",
@@ -204,6 +205,27 @@ watch_refreshes = Table(
     Column("errors", JSON, nullable=False, default=list),
 )
 
+# M011: user workflow overlay (one row per video, UNIQUE on video_id).
+# Independent of `videos` — re-ingesting a video never touches this row
+# (pipeline neutrality per D033 / Pitfall 5 of M011 RESEARCH).
+video_tracking = Table(
+    "video_tracking",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "video_id",
+        Integer,
+        ForeignKey("videos.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("status", String(32), nullable=False, default="new"),
+    Column("starred", Boolean, nullable=False, default=False),
+    Column("notes", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    Column("updated_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    UniqueConstraint("video_id", name="uq_video_tracking_video_id"),
+)
+
 # M009: append-only engagement-counter snapshots (one row per probe).
 # The UNIQUE constraint at (video_id, captured_at) with second resolution
 # (D-01) ensures duplicate probes within the same second are silently
@@ -268,6 +290,7 @@ def init_db(engine: Engine) -> None:
         _ensure_video_stats_table(conn)
         _ensure_video_stats_indexes(conn)
         _ensure_analysis_v2_columns(conn)
+        _ensure_video_tracking_table(conn)  # M011/S01
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -381,6 +404,54 @@ def _ensure_analysis_v2_columns(conn: Connection) -> None:
         if col_name in existing_cols:
             continue
         conn.execute(text(f"ALTER TABLE analyses ADD COLUMN {col_name} {col_type}"))
+
+
+def _ensure_video_tracking_table(conn: Connection) -> None:
+    """M011/S01 migration: create ``video_tracking`` if absent. Idempotent.
+
+    Called by :func:`init_db` on every startup so pre-M011 databases are
+    upgraded automatically. No-op when the table already exists.
+
+    Indexes
+    -------
+    - ``idx_video_tracking_status``: speeds up ``--status`` facet search (S03).
+    - ``idx_video_tracking_starred``: speeds up ``--starred`` facet search (S03).
+    """
+    existing = {
+        row[0]
+        for row in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        )
+    }
+    if "video_tracking" not in existing:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE video_tracking (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    video_id   INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                    status     VARCHAR(32) NOT NULL DEFAULT 'new',
+                    starred    BOOLEAN NOT NULL DEFAULT 0,
+                    notes      TEXT,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL,
+                    CONSTRAINT uq_video_tracking_video_id UNIQUE (video_id)
+                )
+                """
+            )
+        )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_video_tracking_status "
+            "ON video_tracking (status)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS idx_video_tracking_starred "
+            "ON video_tracking (starred)"
+        )
+    )
 
 
 # Re-export a type alias used by tests that want to introspect row maps
