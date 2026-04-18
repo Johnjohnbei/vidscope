@@ -14,6 +14,7 @@ from typing import Any, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 
 from vidscope.adapters.sqlite.schema import hashtags as hashtags_table
 from vidscope.domain import Hashtag, VideoId
@@ -83,7 +84,7 @@ class HashtagRepositorySQLite:
                 self._conn.execute(
                     hashtags_table.insert().values(canonicalised)
                 )
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             raise StorageError(
                 f"replace_for_video failed for hashtags of video "
                 f"{int(video_id)}: {exc}",

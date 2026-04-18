@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 
 from vidscope.adapters.sqlite.schema import links as links_table
 from vidscope.domain import Link, VideoId
@@ -71,7 +72,7 @@ class LinkRepositorySQLite:
                 )
         except StorageError:
             raise
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             raise StorageError(
                 f"add_many_for_video failed for links of video "
                 f"{int(video_id)}: {exc}",

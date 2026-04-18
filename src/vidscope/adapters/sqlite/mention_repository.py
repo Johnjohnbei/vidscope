@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from sqlalchemy import delete, select
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 
 from vidscope.adapters.sqlite.schema import mentions as mentions_table
 from vidscope.domain import Mention, Platform, VideoId
@@ -70,7 +71,7 @@ class MentionRepositorySQLite:
                 self._conn.execute(
                     mentions_table.insert().values(payloads)
                 )
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             raise StorageError(
                 f"replace_for_video failed for mentions of video "
                 f"{int(video_id)}: {exc}",

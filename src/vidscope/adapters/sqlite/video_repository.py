@@ -13,6 +13,7 @@ from typing import Any, cast
 from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 
 from vidscope.adapters.sqlite.schema import videos as videos_table
 from vidscope.domain import Creator, CreatorId, Platform, PlatformId, Video, VideoId
@@ -37,7 +38,7 @@ class VideoRepositorySQLite:
         payload = _video_to_row(video)
         try:
             result = self._conn.execute(videos_table.insert().values(**payload))
-        except Exception as exc:  # SQLAlchemy wraps IntegrityError etc.
+        except SQLAlchemyError as exc:  # SQLAlchemy wraps IntegrityError etc.
             raise StorageError(
                 f"failed to insert video {video.platform_id}: {exc}",
                 cause=exc,
@@ -83,7 +84,7 @@ class VideoRepositorySQLite:
         )
         try:
             self._conn.execute(stmt)
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             raise StorageError(
                 f"upsert failed for video {video.platform_id}: {exc}",
                 cause=exc,
