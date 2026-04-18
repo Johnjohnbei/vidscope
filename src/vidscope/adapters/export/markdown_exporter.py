@@ -39,21 +39,21 @@ class MarkdownExporter:
     ) -> None:
         lines: list[str] = []
         for rec in records:
-            frontmatter = dataclasses.asdict(rec)
+            d = dataclasses.asdict(rec)
             lines.append("---")
             lines.append(
                 yaml.dump(
-                    frontmatter,
+                    d,
                     allow_unicode=True,
                     sort_keys=True,
                     default_flow_style=False,
                 ).rstrip()
             )
             lines.append("---")
-            lines.append(f"# {rec.title or rec.url}")
-            if rec.summary:
+            lines.append(f"# {d.get('title') or d.get('url', '')}")
+            if d.get("summary"):
                 lines.append("")
-                lines.append(rec.summary)
+                lines.append(d["summary"])
             lines.append("")
             lines.append("---")
             lines.append("")
