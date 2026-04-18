@@ -21,6 +21,7 @@ from vidscope.cli.commands import (
     collection_app,
     cookies_app,
     doctor_command,
+    export_command,
     explain_command,
     list_command,
     mcp_app,
@@ -119,3 +120,7 @@ app.command(
 )(review_command)
 app.add_typer(tag_app, name="tag")
 app.add_typer(collection_app, name="collection")
+app.command(
+    "export",
+    help="Export the library to JSON / Markdown / CSV.",
+)(export_command)
