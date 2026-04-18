@@ -28,9 +28,8 @@ from vidscope.domain import (
     VideoId,
 )
 from vidscope.pipeline.stages import VisualIntelligenceStage
-from vidscope.ports import PipelineContext, StageResult
+from vidscope.ports import PipelineContext
 from vidscope.ports.ocr_engine import OcrEngine, OcrLine
-
 
 # ---------------------------------------------------------------------------
 # Fakes
@@ -150,7 +149,7 @@ class _FakeUoW:
     frame_texts: _FakeFrameTextRepo
     links: _FakeLinkRepo
 
-    def __enter__(self) -> "_FakeUoW":
+    def __enter__(self) -> _FakeUoW:
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -294,13 +293,21 @@ class TestExecuteHappyPaths:
     def test_multiple_frames_multiple_links(self, tmp_path: Path) -> None:
         engine = _FakeOcrEngine(
             results={
-                str(tmp_path / "f/0.jpg"): [OcrLine(text="Visit promo.com now", confidence=0.9)],
-                str(tmp_path / "f/1.jpg"): [OcrLine(text="Also: https://shop.net/deal", confidence=0.85)],
+                str(tmp_path / "f/0.jpg"): [
+                    OcrLine(text="Visit promo.com now", confidence=0.9)
+                ],
+                str(tmp_path / "f/1.jpg"): [
+                    OcrLine(text="Also: https://shop.net/deal", confidence=0.85)
+                ],
             }
         )
         stage, uow = _stage(engine=engine, tmp_path=tmp_path)
-        uow.frames.frames.append(Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=1000, id=1))
-        uow.frames.frames.append(Frame(video_id=VideoId(1), image_key="f/1.jpg", timestamp_ms=3000, id=2))
+        uow.frames.frames.append(
+            Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=1000, id=1)
+        )
+        uow.frames.frames.append(
+            Frame(video_id=VideoId(1), image_key="f/1.jpg", timestamp_ms=3000, id=2)
+        )
         result = stage.execute(_ctx(), uow)  # type: ignore[arg-type]
         assert result.skipped is False
         assert len(uow.frame_texts.rows) == 2
@@ -311,13 +318,21 @@ class TestExecuteHappyPaths:
     def test_same_url_across_frames_deduplicated(self, tmp_path: Path) -> None:
         engine = _FakeOcrEngine(
             results={
-                str(tmp_path / "f/0.jpg"): [OcrLine(text="See example.com", confidence=0.9)],
-                str(tmp_path / "f/1.jpg"): [OcrLine(text="example.com again", confidence=0.9)],
+                str(tmp_path / "f/0.jpg"): [
+                    OcrLine(text="See example.com", confidence=0.9)
+                ],
+                str(tmp_path / "f/1.jpg"): [
+                    OcrLine(text="example.com again", confidence=0.9)
+                ],
             }
         )
         stage, uow = _stage(engine=engine, tmp_path=tmp_path)
-        uow.frames.frames.append(Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=1000, id=1))
-        uow.frames.frames.append(Frame(video_id=VideoId(1), image_key="f/1.jpg", timestamp_ms=2000, id=2))
+        uow.frames.frames.append(
+            Frame(video_id=VideoId(1), image_key="f/0.jpg", timestamp_ms=1000, id=1)
+        )
+        uow.frames.frames.append(
+            Frame(video_id=VideoId(1), image_key="f/1.jpg", timestamp_ms=2000, id=2)
+        )
         stage.execute(_ctx(), uow)  # type: ignore[arg-type]
         # add_many_for_video dedups by (normalized_url, source) — one row only
         assert len(uow.links.rows) == 1

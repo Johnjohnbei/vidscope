@@ -121,7 +121,7 @@ class VisualIntelligenceStage:
 
             try:
                 resolved = self._media_storage.resolve(frame.image_key)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _logger.warning(
                     "visual_intelligence: failed to resolve %s for video %s: %s",
                     frame.image_key,

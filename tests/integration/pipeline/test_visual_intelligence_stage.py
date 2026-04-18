@@ -23,11 +23,10 @@ from vidscope.domain import (
     Platform,
     PlatformId,
     Video,
-    VideoId,
 )
 from vidscope.pipeline.stages import VisualIntelligenceStage
 from vidscope.ports import PipelineContext
-from vidscope.ports.ocr_engine import OcrEngine, OcrLine
+from vidscope.ports.ocr_engine import OcrLine
 
 
 class _StubOcr:
