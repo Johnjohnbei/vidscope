@@ -92,6 +92,7 @@ class StageName(StrEnum):
     TRANSCRIBE = "transcribe"
     FRAMES = "frames"
     ANALYZE = "analyze"
+    METADATA_EXTRACT = "metadata_extract"
     INDEX = "index"
 
 
