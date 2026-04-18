@@ -40,6 +40,7 @@ EXPECTED_CONTRACTS = (
     "Pipeline layer depends only on ports and domain",
     "Application layer depends only on ports and domain",
     "MCP interface layer depends only on application and infrastructure",
+    "config adapter does not import other adapters",
 )
 
 

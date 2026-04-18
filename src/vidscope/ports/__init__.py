@@ -43,6 +43,7 @@ from vidscope.ports.repositories import (
 )
 from vidscope.ports.stats_probe import StatsProbe
 from vidscope.ports.storage import MediaStorage
+from vidscope.ports.taxonomy_catalog import TaxonomyCatalog
 from vidscope.ports.unit_of_work import UnitOfWork, UnitOfWorkFactory
 
 __all__ = [
@@ -64,6 +65,7 @@ __all__ = [
     "Stage",
     "StageResult",
     "StatsProbe",
+    "TaxonomyCatalog",
     "Transcriber",
     "TranscriptRepository",
     "UnitOfWork",

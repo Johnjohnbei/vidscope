@@ -174,3 +174,28 @@ forbidden_modules =
     vidscope.adapters.llm
 ignore_imports =
     vidscope.mcp.server -> vidscope.infrastructure.container
+
+# ---------------------------------------------------------------------------
+# The config adapter layer is self-contained: it reads config files
+# and exposes ports. It must never cross-depend on other adapters
+# (that would turn it into a god-adapter). Like every other adapter
+# category, it only knows domain + ports.
+# ---------------------------------------------------------------------------
+[importlinter:contract:config-adapter-is-self-contained]
+name = config adapter does not import other adapters
+type = forbidden
+source_modules =
+    vidscope.adapters.config
+forbidden_modules =
+    vidscope.adapters.sqlite
+    vidscope.adapters.fs
+    vidscope.adapters.ytdlp
+    vidscope.adapters.whisper
+    vidscope.adapters.ffmpeg
+    vidscope.adapters.heuristic
+    vidscope.adapters.llm
+    vidscope.infrastructure
+    vidscope.application
+    vidscope.pipeline
+    vidscope.cli
+    vidscope.mcp

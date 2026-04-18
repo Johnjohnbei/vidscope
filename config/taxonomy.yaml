@@ -1,0 +1,234 @@
+# Controlled vertical taxonomy for M010 analyzer output.
+# Each top-level key is a vertical slug; the value is the lowercase
+# keyword list used by YamlTaxonomy.match(tokens).
+# Edited by hand (M010 ROADMAP: no ML auto-expansion).
+
+tech:
+  - code
+  - coding
+  - software
+  - python
+  - javascript
+  - typescript
+  - react
+  - nodejs
+  - api
+  - framework
+  - backend
+  - frontend
+  - devops
+  - linux
+  - docker
+  - kubernetes
+  - git
+  - github
+  - programming
+  - developer
+
+ai:
+  - ai
+  - llm
+  - gpt
+  - chatgpt
+  - claude
+  - gemini
+  - prompt
+  - neural
+  - machine
+  - learning
+  - model
+  - training
+  - inference
+  - agent
+  - embedding
+  - dataset
+  - openai
+  - anthropic
+
+beauty:
+  - makeup
+  - skincare
+  - foundation
+  - mascara
+  - lipstick
+  - serum
+  - moisturizer
+  - concealer
+  - beauty
+  - cosmetic
+  - highlighter
+  - blush
+  - eyeliner
+  - routine
+  - sephora
+
+fitness:
+  - workout
+  - gym
+  - fitness
+  - cardio
+  - strength
+  - muscle
+  - bodybuilding
+  - squat
+  - deadlift
+  - reps
+  - sets
+  - training
+  - protein
+  - hypertrophy
+  - calisthenics
+  - running
+  - yoga
+  - pilates
+
+food:
+  - recipe
+  - cooking
+  - kitchen
+  - chef
+  - bake
+  - baking
+  - pasta
+  - pizza
+  - dessert
+  - vegan
+  - vegetarian
+  - breakfast
+  - lunch
+  - dinner
+  - meal
+  - ingredient
+  - flavor
+  - restaurant
+  - snack
+
+finance:
+  - money
+  - investing
+  - stocks
+  - crypto
+  - bitcoin
+  - ethereum
+  - trading
+  - portfolio
+  - dividend
+  - retirement
+  - savings
+  - budget
+  - mortgage
+  - loan
+  - debt
+  - etf
+  - index
+  - finance
+  - wealth
+
+travel:
+  - travel
+  - trip
+  - vacation
+  - flight
+  - airline
+  - hotel
+  - airbnb
+  - passport
+  - visa
+  - backpack
+  - tourist
+  - destination
+  - itinerary
+  - jetlag
+  - beach
+  - mountain
+  - adventure
+
+gaming:
+  - gaming
+  - gamer
+  - playstation
+  - xbox
+  - nintendo
+  - switch
+  - steam
+  - minecraft
+  - fortnite
+  - valorant
+  - overwatch
+  - esports
+  - streamer
+  - twitch
+  - speedrun
+  - boss
+  - level
+
+education:
+  - tutorial
+  - lesson
+  - learn
+  - learning
+  - study
+  - course
+  - teacher
+  - student
+  - school
+  - university
+  - science
+  - math
+  - physics
+  - chemistry
+  - biology
+  - history
+  - knowledge
+
+fashion:
+  - fashion
+  - outfit
+  - style
+  - wardrobe
+  - dress
+  - jacket
+  - shoes
+  - sneakers
+  - accessory
+  - trend
+  - runway
+  - brand
+  - designer
+  - thrift
+  - aesthetic
+
+music:
+  - music
+  - song
+  - artist
+  - album
+  - track
+  - guitar
+  - piano
+  - beat
+  - producer
+  - concert
+  - festival
+  - rapper
+  - melody
+  - chord
+  - lyrics
+  - spotify
+
+productivity:
+  - productivity
+  - habit
+  - routine
+  - focus
+  - deepwork
+  - calendar
+  - planning
+  - notion
+  - todoist
+  - goal
+  - discipline
+  - morning
+  - time
+  - pomodoro
+  - journaling
