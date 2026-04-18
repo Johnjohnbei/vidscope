@@ -1,9 +1,9 @@
 # GSD State
 
-**Last Completed Milestone:** M010 (complete — S01/S02/S03/S04 all done, 29/29 verified)
-**Active Slice:** None (M010 complete)
-**Phase:** M010
-**Requirements Status:** R053 (domain score vector + sentiment/sponsor/content_type — S01/S02/S03), R054 (taxonomy catalog 12 verticals + 206 keywords — S01/S02), R055 (reasoning field + ExplainAnalysis CLI — S01/S03/S04)
+**Last Completed Milestone:** M011 (complete — S01/S02/S03/S04 all done, 36/36 verified)
+**Active Slice:** None (M011 complete)
+**Phase:** M011
+**Requirements Status:** R056 (tracking+notes — S01), R057 (tags+collections — S02), R058 (facetted search — S03), R059 (export JSON/MD/CSV — S04)
 
 ## Milestone Registry
 - ✅ **M001:** Pipeline ponctuel end-to-end
@@ -16,7 +16,7 @@
 - ✅ **M008:** Visual intelligence on frames — OCR, thumbnail, content-shape
 - ✅ **M009:** Engagement signals + velocity tracking (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
 - ✅ **M010:** Multi-dimensional scoring + controlled taxonomy (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
-- 📋 **M011:** Veille workflow layer — tracking, tags, collections, exports (roadmap ready)
+- ✅ **M011:** Veille workflow layer — tracking, tags, collections, exports (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
 
 ## Recent Decisions
 - **M009/S04:** views_velocity_24h unit is views/HOUR (D-04) — the function name is misleading; min_velocity comparisons are in views/hour not views/day
@@ -43,4 +43,4 @@
 | M009  | S04  | ~90min   | 3     | 16    |
 
 ## Next Action
-M009 complete. All 6 milestones done. Next milestone TBD.
+M011 complete. All 11 milestones done. Next milestone TBD.
