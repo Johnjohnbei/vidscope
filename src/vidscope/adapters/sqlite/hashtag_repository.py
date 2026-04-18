@@ -8,6 +8,7 @@ video writes in the same :class:`IngestStage` transaction.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -17,6 +18,8 @@ from sqlalchemy.engine import Connection
 from vidscope.adapters.sqlite.schema import hashtags as hashtags_table
 from vidscope.domain import Hashtag, VideoId
 from vidscope.domain.errors import StorageError
+
+_logger = logging.getLogger(__name__)
 
 __all__ = ["HashtagRepositorySQLite"]
 
@@ -58,7 +61,15 @@ class HashtagRepositorySQLite:
             now = datetime.now(UTC)
             for raw in tags:
                 canon = _canonicalise_tag(raw)
-                if not canon or canon in seen:
+                if not canon:
+                    _logger.debug(
+                        "tag %r became empty after canonicalisation for "
+                        "video %d; skipping",
+                        raw,
+                        int(video_id),
+                    )
+                    continue
+                if canon in seen:
                     continue
                 seen.add(canon)
                 canonicalised.append(
