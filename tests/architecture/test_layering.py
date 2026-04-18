@@ -41,6 +41,7 @@ EXPECTED_CONTRACTS = (
     "Application layer depends only on ports and domain",
     "MCP interface layer depends only on application and infrastructure",
     "config adapter does not import other adapters",
+    "export adapter does not import other adapters",
 )
 
 

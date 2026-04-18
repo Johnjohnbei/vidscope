@@ -16,6 +16,7 @@ that rule mechanically.
 from __future__ import annotations
 
 from vidscope.ports.clock import Clock
+from vidscope.ports.exporter import Exporter
 from vidscope.ports.pipeline import (
     Analyzer,
     ChannelEntry,
@@ -55,6 +56,7 @@ __all__ = [
     "ChannelEntry",
     "Clock",
     "CollectionRepository",
+    "Exporter",
     "Downloader",
     "FrameExtractor",
     "FrameRepository",

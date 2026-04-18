@@ -176,6 +176,32 @@ ignore_imports =
     vidscope.mcp.server -> vidscope.infrastructure.container
 
 # ---------------------------------------------------------------------------
+# The export adapter is self-contained: it serializes ExportRecord lists
+# to JSON / Markdown / CSV. It must not reach for other adapters or
+# the application/infrastructure layers. Mirror of
+# config-adapter-is-self-contained (M010/S01).
+# ---------------------------------------------------------------------------
+[importlinter:contract:export-adapter-is-self-contained]
+name = export adapter does not import other adapters
+type = forbidden
+source_modules =
+    vidscope.adapters.export
+forbidden_modules =
+    vidscope.adapters.sqlite
+    vidscope.adapters.fs
+    vidscope.adapters.config
+    vidscope.adapters.ytdlp
+    vidscope.adapters.whisper
+    vidscope.adapters.ffmpeg
+    vidscope.adapters.heuristic
+    vidscope.adapters.llm
+    vidscope.infrastructure
+    vidscope.application
+    vidscope.pipeline
+    vidscope.cli
+    vidscope.mcp
+
+# ---------------------------------------------------------------------------
 # The config adapter layer is self-contained: it reads config files
 # and exposes ports. It must never cross-depend on other adapters
 # (that would turn it into a god-adapter). Like every other adapter
