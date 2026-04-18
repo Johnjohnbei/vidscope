@@ -33,10 +33,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 EXPECTED_CONTRACTS = (
     "Hexagonal layering - inward-only",
-    "sqlite adapter does not import fs or text adapters",
-    "fs adapter does not import sqlite or text adapters",
+    "sqlite adapter does not import fs, text, or vision adapters",
+    "fs adapter does not import sqlite, text, or vision adapters",
     "llm adapter does not import other adapters",
     "text adapter does not import other adapters",
+    "vision adapter does not import other adapters",
     "Domain is pure Python - no third-party runtime deps",
     "Ports are pure Python - no third-party runtime deps",
     "Pipeline layer depends only on ports and domain",
