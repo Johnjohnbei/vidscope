@@ -86,7 +86,12 @@ class MetadataExtractStage:
 
         # 1. Read description from the videos row (M007 D-01: column).
         video = uow.videos.get(ctx.video_id)
-        description = video.description if video is not None else None
+        if video is None:
+            raise IndexingError(
+                f"metadata_extract: video {ctx.video_id} not found in DB; "
+                "ingest must complete successfully before metadata extraction"
+            )
+        description = video.description
 
         # 2. Read transcript (optional — may be None on transcription
         #    failure or instrumental video).
