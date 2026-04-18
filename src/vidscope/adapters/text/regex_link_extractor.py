@@ -50,11 +50,12 @@ _SCHEME_URL: Final[Pattern[str]] = re.compile(
 
 
 # Bare domain: "host.tld[/path][?query]" where tld is in _COMMON_TLDS.
-# Negative lookbehind (?<!\w) prevents matching inside words like
-# "version1.0" or "file.txt". Negative lookahead at end anchors on
-# a separator.
+# Negative lookbehind (?<![\\w@]) prevents matching inside words like
+# "version1.0" or "file.txt", and also prevents matching the domain
+# part of an email address like "user@example.com" (the "@" before the
+# domain would trigger the lookbehind and skip the match).
 _BARE_DOMAIN: Final[Pattern[str]] = re.compile(
-    r"(?<!\w)"
+    r"(?<![\w@])"
     r"(?:www\.)?"
     r"([a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)"
     r"\.(" + "|".join(_COMMON_TLDS) + r")"
@@ -82,13 +83,23 @@ class RegexLinkExtractor:
         results: list[RawLink] = []
         seen_normalized: set[str] = set()
 
-        # Pass 1: scheme-explicit URLs
+        # Pass 1: scheme-explicit URLs.
+        # Track the character spans already covered so that Pass 2 does
+        # not produce a bare-domain match that is a substring of a
+        # scheme-explicit match already captured (e.g. the "python.org/3"
+        # tail of "https://docs.python.org/3" must not be re-captured).
+        scheme_spans: list[tuple[int, int]] = []
+
         for match in _SCHEME_URL.finditer(text):
             raw = match.group(0).rstrip(_TRAILING_PUNCT)
             norm = normalize_url(raw)
             if not norm or norm in seen_normalized:
                 continue
             seen_normalized.add(norm)
+            # Record the span of the *stripped* raw string
+            span_start = match.start()
+            span_end = span_start + len(raw)
+            scheme_spans.append((span_start, span_end))
             results.append(
                 RawLink(
                     url=raw,
@@ -100,8 +111,13 @@ class RegexLinkExtractor:
 
         # Pass 2: bare domains (only when the normalized form is
         # not already captured — avoids double-counting a URL
-        # matched by pass 1).
+        # matched by pass 1). Skip any bare-domain match whose span
+        # overlaps with a scheme-explicit match span.
         for match in _BARE_DOMAIN.finditer(text):
+            # Skip if this match falls inside a scheme-explicit span
+            m_start, m_end = match.start(), match.end()
+            if any(s <= m_start and m_end <= e for s, e in scheme_spans):
+                continue
             raw = match.group(0).rstrip(_TRAILING_PUNCT)
             if not raw:
                 continue

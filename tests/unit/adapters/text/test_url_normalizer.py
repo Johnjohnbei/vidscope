@@ -6,8 +6,6 @@ additional edge cases for robustness.
 
 from __future__ import annotations
 
-import pytest
-
 from vidscope.adapters.text.url_normalizer import normalize_url
 
 
@@ -60,7 +58,8 @@ class TestNormalizeUrl:
             normalized = normalize_url(url)
             assert normalize_url(normalized) == normalized, (
                 f"normalize_url is not idempotent for {url!r}: "
-                f"normalize(normalize(url))={normalize_url(normalized)!r} != normalize(url)={normalized!r}"
+                f"normalize(normalize(url))={normalize_url(normalized)!r}"
+                f" != normalize(url)={normalized!r}"
             )
 
     def test_www_preserved(self) -> None:
