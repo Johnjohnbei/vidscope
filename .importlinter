@@ -43,22 +43,24 @@ layers =
 # never forbidden from importing itself.
 # ---------------------------------------------------------------------------
 [importlinter:contract:sqlite-never-imports-fs]
-name = sqlite adapter does not import fs or text adapters
+name = sqlite adapter does not import fs, text, or vision adapters
 type = forbidden
 source_modules =
     vidscope.adapters.sqlite
 forbidden_modules =
     vidscope.adapters.fs
     vidscope.adapters.text
+    vidscope.adapters.vision
 
 [importlinter:contract:fs-never-imports-sqlite]
-name = fs adapter does not import sqlite or text adapters
+name = fs adapter does not import sqlite, text, or vision adapters
 type = forbidden
 source_modules =
     vidscope.adapters.fs
 forbidden_modules =
     vidscope.adapters.sqlite
     vidscope.adapters.text
+    vidscope.adapters.vision
 
 [importlinter:contract:llm-never-imports-other-adapters]
 name = llm adapter does not import other adapters
@@ -73,6 +75,7 @@ forbidden_modules =
     vidscope.adapters.ffmpeg
     vidscope.adapters.heuristic
     vidscope.adapters.text
+    vidscope.adapters.vision
     vidscope.infrastructure
     vidscope.application
     vidscope.pipeline
@@ -92,6 +95,27 @@ forbidden_modules =
     vidscope.adapters.ffmpeg
     vidscope.adapters.heuristic
     vidscope.adapters.llm
+    vidscope.adapters.vision
+    vidscope.infrastructure
+    vidscope.application
+    vidscope.pipeline
+    vidscope.cli
+    vidscope.mcp
+
+[importlinter:contract:vision-adapter-is-self-contained]
+name = vision adapter does not import other adapters
+type = forbidden
+source_modules =
+    vidscope.adapters.vision
+forbidden_modules =
+    vidscope.adapters.sqlite
+    vidscope.adapters.fs
+    vidscope.adapters.ytdlp
+    vidscope.adapters.whisper
+    vidscope.adapters.ffmpeg
+    vidscope.adapters.heuristic
+    vidscope.adapters.llm
+    vidscope.adapters.text
     vidscope.infrastructure
     vidscope.application
     vidscope.pipeline

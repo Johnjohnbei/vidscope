@@ -173,6 +173,14 @@ module = [
 ]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# Optional vision extra — not installed in dev unless `uv sync --extra vision`
+module = [
+    "cv2",
+    "rapidocr_onnxruntime",
+]
+ignore_missing_imports = true
+
 # ---------------------------------------------------------------------------
 # coverage
 # ---------------------------------------------------------------------------
