@@ -94,13 +94,17 @@ class SearchLibraryUseCase:
                 # method → list_recent + filter in memory. Bounded by
                 # 1000 to keep worst case small on libraries with
                 # many unrelated videos.
+                # NOTE: videos whose music_track is NULL are excluded by
+                # the equality comparison (None == music_track is False).
+                # This is intentional — a NULL music_track means "unknown"
+                # and should not match a specific track search.
                 candidates = uow.videos.list_recent(limit=1000)
                 facet_sets.append(
                     {
                         int(v.id)
                         for v in candidates
                         if v.id is not None
-                        and v.music_track == music_track
+                        and v.music_track == music_track  # excludes NULL rows
                     }
                 )
 
