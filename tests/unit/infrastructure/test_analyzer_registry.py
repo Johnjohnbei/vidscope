@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 
-from vidscope.adapters.heuristic import HeuristicAnalyzer, StubAnalyzer
+from vidscope.adapters.heuristic import HeuristicAnalyzer, HeuristicAnalyzerV2, StubAnalyzer
 from vidscope.adapters.llm.anthropic import AnthropicAnalyzer
 from vidscope.adapters.llm.groq import GroqAnalyzer
 from vidscope.adapters.llm.nvidia_build import NvidiaBuildAnalyzer
@@ -17,9 +20,32 @@ from vidscope.infrastructure.analyzer_registry import (
 )
 
 
+@pytest.fixture
+def repo_root_cwd(monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Change cwd to repo root so ``config/taxonomy.yaml`` resolves."""
+    here = Path(__file__).resolve()
+    root = here
+    for _ in range(6):
+        if (root / "config" / "taxonomy.yaml").is_file():
+            break
+        root = root.parent
+    assert (root / "config" / "taxonomy.yaml").is_file(), (
+        "test requires config/taxonomy.yaml to exist at repo root"
+    )
+    monkeypatch.chdir(root)
+    return root
+
+
 class TestBuildAnalyzer:
-    def test_heuristic_returns_heuristic_analyzer(self) -> None:
+    def test_heuristic_returns_heuristic_v2_analyzer(self, repo_root_cwd: Path) -> None:
+        """M010: build_analyzer('heuristic') now returns HeuristicAnalyzerV2."""
         analyzer = build_analyzer("heuristic")
+        assert isinstance(analyzer, HeuristicAnalyzerV2)
+        assert analyzer.provider_name == "heuristic"
+
+    def test_heuristic_v1_returns_legacy_analyzer(self) -> None:
+        """Backward compat: 'heuristic-v1' returns the old HeuristicAnalyzer."""
+        analyzer = build_analyzer("heuristic-v1")
         assert isinstance(analyzer, HeuristicAnalyzer)
         assert analyzer.provider_name == "heuristic"
 
@@ -38,7 +64,7 @@ class TestBuildAnalyzer:
         assert "heuristic" in str(exc_info.value)
         assert "stub" in str(exc_info.value)
 
-    def test_each_call_returns_a_fresh_instance(self) -> None:
+    def test_each_call_returns_a_fresh_instance(self, repo_root_cwd: Path) -> None:
         a = build_analyzer("heuristic")
         b = build_analyzer("heuristic")
         # Same type but different instances
@@ -195,3 +221,29 @@ class TestBuildAnthropicAnalyzer:
         with pytest.raises(ConfigError) as exc_info:
             build_analyzer("anthropic")
         assert "console.anthropic.com" in str(exc_info.value)
+
+
+class TestHeuristicRegistryM010:
+    def test_known_analyzers_contains_v1_and_v2(self) -> None:
+        assert "heuristic" in KNOWN_ANALYZERS
+        assert "heuristic-v1" in KNOWN_ANALYZERS
+
+    def test_build_heuristic_returns_v2(self, repo_root_cwd: Path) -> None:
+        a = build_analyzer("heuristic")
+        assert isinstance(a, HeuristicAnalyzerV2)
+        assert a.provider_name == "heuristic"
+
+    def test_build_heuristic_v1_returns_v1(self) -> None:
+        a = build_analyzer("heuristic-v1")
+        assert isinstance(a, HeuristicAnalyzer)
+        assert a.provider_name == "heuristic"  # V1 still reports "heuristic"
+
+    def test_heuristic_does_not_need_api_key(
+        self, repo_root_cwd: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Remove any env vars related to LLM keys to prove heuristic is self-sufficient
+        for k in list(os.environ.keys()):
+            if k.startswith("VIDSCOPE_") and k.endswith("_API_KEY"):
+                monkeypatch.delenv(k, raising=False)
+        a = build_analyzer("heuristic")
+        assert a is not None

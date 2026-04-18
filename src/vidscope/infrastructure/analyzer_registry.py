@@ -6,7 +6,8 @@ string to a concrete :class:`Analyzer` instance.
 
 Currently registered:
 
-- ``"heuristic"`` → :class:`HeuristicAnalyzer` (default, zero cost)
+- ``"heuristic"`` → :class:`HeuristicAnalyzerV2` (M010 default, zero cost)
+- ``"heuristic-v1"`` → :class:`HeuristicAnalyzer` (legacy, backward compat R010)
 - ``"stub"`` → :class:`StubAnalyzer` (placeholder, only for tests)
 - ``"groq"`` → :class:`GroqAnalyzer` (M004/S01, free tier via console.groq.com)
 - ``"nvidia"`` → :class:`NvidiaBuildAnalyzer` (M004/S02)
@@ -25,9 +26,11 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Final
 
-from vidscope.adapters.heuristic import HeuristicAnalyzer, StubAnalyzer
+from vidscope.adapters.config import YamlTaxonomy
+from vidscope.adapters.heuristic import HeuristicAnalyzer, HeuristicAnalyzerV2, StubAnalyzer
 from vidscope.adapters.llm.anthropic import AnthropicAnalyzer
 from vidscope.adapters.llm.groq import GroqAnalyzer
 from vidscope.adapters.llm.nvidia_build import NvidiaBuildAnalyzer
@@ -155,8 +158,26 @@ def _build_anthropic() -> Analyzer:
         raise ConfigError(f"failed to build anthropic analyzer: {exc}") from exc
 
 
+def _build_heuristic_v2() -> Analyzer:
+    """Build the M010 default heuristic analyzer.
+
+    Loads ``config/taxonomy.yaml`` relative to the current working
+    directory. The path is resolved at factory invocation (not at
+    module import) so tests can monkeypatch cwd if needed.
+    """
+    taxonomy_path = Path("config") / "taxonomy.yaml"
+    if not taxonomy_path.is_absolute():
+        taxonomy_path = Path.cwd() / taxonomy_path
+    try:
+        taxonomy = YamlTaxonomy(taxonomy_path)
+    except ValueError as exc:
+        raise ConfigError(f"failed to load heuristic taxonomy: {exc}") from exc
+    return HeuristicAnalyzerV2(taxonomy=taxonomy)
+
+
 _FACTORIES: Final[dict[str, Callable[[], Analyzer]]] = {
-    "heuristic": HeuristicAnalyzer,
+    "heuristic": _build_heuristic_v2,      # M010 default
+    "heuristic-v1": HeuristicAnalyzer,     # backward compat (M001-M009)
     "stub": StubAnalyzer,
     "groq": _build_groq,
     "nvidia": _build_nvidia,

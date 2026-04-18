@@ -7,6 +7,7 @@ plus a stub second analyzer to prove the pluggable provider seam (R010).
 from __future__ import annotations
 
 from vidscope.adapters.heuristic.analyzer import HeuristicAnalyzer
+from vidscope.adapters.heuristic.heuristic_v2 import HeuristicAnalyzerV2
 from vidscope.adapters.heuristic.sentiment_lexicon import (
     NEGATIVE_WORDS,
     POSITIVE_WORDS,
@@ -23,6 +24,7 @@ __all__ = [
     "POSITIVE_WORDS",
     "SPONSOR_MARKERS",
     "HeuristicAnalyzer",
+    "HeuristicAnalyzerV2",
     "SentimentLexicon",
     "SponsorDetector",
     "StubAnalyzer",
