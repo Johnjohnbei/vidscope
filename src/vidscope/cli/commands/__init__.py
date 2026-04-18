@@ -12,6 +12,7 @@ from vidscope.cli.commands.show import show_command
 from vidscope.cli.commands.stats import refresh_stats_command
 from vidscope.cli.commands.status import status_command
 from vidscope.cli.commands.suggest import suggest_command
+from vidscope.cli.commands.trending import trending_command
 from vidscope.cli.commands.watch import watch_app
 
 __all__ = [
@@ -25,5 +26,6 @@ __all__ = [
     "show_command",
     "status_command",
     "suggest_command",
+    "trending_command",
     "watch_app",
 ]

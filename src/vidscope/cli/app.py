@@ -27,6 +27,7 @@ from vidscope.cli.commands import (
     show_command,
     status_command,
     suggest_command,
+    trending_command,
     watch_app,
 )
 
@@ -100,3 +101,7 @@ app.command(
     "refresh-stats",
     help="Refresh engagement stats for a video or all ingested videos (append-only).",
 )(refresh_stats_command)
+app.command(
+    "trending",
+    help="Rank ingested videos by views velocity (--since mandatory).",
+)(trending_command)

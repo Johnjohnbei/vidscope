@@ -126,9 +126,10 @@ class TestBuildMcpServer:
         server = build_mcp_server(sandboxed_container)
         assert server.name == "vidscope"
 
-    def test_server_registers_six_tools(
+    def test_server_registers_seven_tools(
         self, sandboxed_container: Container
     ) -> None:
+        """After M009/S04, the server exposes 7 tools (trending added)."""
         server = build_mcp_server(sandboxed_container)
         tools = asyncio.run(server.list_tools())
         names = {tool.name for tool in tools}
@@ -139,6 +140,7 @@ class TestBuildMcpServer:
             "vidscope_list_videos",
             "vidscope_get_status",
             "vidscope_suggest_related",
+            "vidscope_trending",
         }
 
     def test_tool_names_appear_in_tool_schemas(

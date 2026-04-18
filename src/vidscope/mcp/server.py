@@ -38,6 +38,7 @@ Test strategy
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -45,12 +46,13 @@ from mcp.server.fastmcp import FastMCP
 from vidscope.application import (
     GetStatusUseCase,
     IngestVideoUseCase,
+    ListTrendingUseCase,
     ListVideosUseCase,
     SearchLibraryUseCase,
     ShowVideoUseCase,
     SuggestRelatedUseCase,
 )
-from vidscope.domain import DomainError, Video, VideoId
+from vidscope.domain import DomainError, Platform, Video, VideoId
 from vidscope.infrastructure.container import Container
 
 __all__ = ["build_mcp_server", "main"]
@@ -285,6 +287,82 @@ def build_mcp_server(container: Container) -> FastMCP:
                 for run in result.runs
             ],
         }
+
+    @mcp.tool()
+    def vidscope_trending(
+        since: str,
+        platform: str | None = None,
+        min_velocity: float = 0.0,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Rank ingested videos by views_velocity_24h. Mirrors `vidscope trending` CLI.
+
+        Args:
+            since: window string e.g. "7d" or "24h" (mandatory, D-04).
+            platform: optional filter ("instagram", "tiktok", "youtube").
+            min_velocity: minimum views/hour to appear (default 0).
+            limit: max results (default 20, must be >= 1).
+
+        Returns:
+            List of dicts with keys: video_id, platform, title,
+            views_velocity_24h, engagement_rate, last_captured_at
+            (ISO-8601 string), latest_view_count, latest_like_count.
+        """
+        # Inline window parser — avoids importing CLI module (contract)
+        s = since.strip().lower()
+        if len(s) < 2 or not s[:-1].isdigit():
+            raise ValueError(
+                f"invalid since window: {since!r} (expected N(h|d), e.g. 7d or 24h)"
+            )
+        n = int(s[:-1])
+        if n <= 0:
+            raise ValueError(f"since must be positive: {since!r}")
+        if s[-1] == "h":
+            window = timedelta(hours=n)
+        elif s[-1] == "d":
+            window = timedelta(days=n)
+        else:
+            raise ValueError(
+                f"invalid since unit: {s[-1]!r} (expected 'h' or 'd')"
+            )
+
+        plat: Platform | None = None
+        if platform is not None:
+            try:
+                plat = Platform(platform.strip().lower())
+            except ValueError as exc:
+                raise ValueError(f"invalid platform: {platform!r}") from exc
+
+        if limit < 1:
+            raise ValueError("limit must be >= 1")
+
+        uc = ListTrendingUseCase(
+            unit_of_work_factory=container.unit_of_work,
+            clock=container.clock,
+        )
+        try:
+            results = uc.execute(
+                since=window,
+                platform=plat,
+                min_velocity=min_velocity,
+                limit=limit,
+            )
+        except DomainError as exc:
+            raise ValueError(str(exc)) from exc
+
+        return [
+            {
+                "video_id": e.video_id,
+                "platform": e.platform.value,
+                "title": e.title,
+                "views_velocity_24h": e.views_velocity_24h,
+                "engagement_rate": e.engagement_rate,
+                "last_captured_at": e.last_captured_at.isoformat(),
+                "latest_view_count": e.latest_view_count,
+                "latest_like_count": e.latest_like_count,
+            }
+            for e in results
+        ]
 
     # The closures above reference the use cases by name so mypy can
     # verify they exist. Silence the unused-type warning for VideoId
