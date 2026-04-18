@@ -61,15 +61,21 @@ class ShowVideoUseCase:
             video = uow.videos.get(VideoId(video_id))
             if video is None:
                 return ShowVideoResult(found=False)
-            transcript = uow.transcripts.get_for_video(video.id)  # type: ignore[arg-type]
-            frames = tuple(uow.frames.list_for_video(video.id))  # type: ignore[arg-type]
-            analysis = uow.analyses.get_latest_for_video(video.id)  # type: ignore[arg-type]
+            # video.id is VideoId | None by definition (None before first
+            # persist), but at this point the row was fetched from the DB so
+            # id is always populated.  Assert to narrow the type without
+            # suppressing mypy with type: ignore.
+            assert video.id is not None, "fetched video has no id — DB invariant broken"
+            vid_id: VideoId = video.id
+            transcript = uow.transcripts.get_for_video(vid_id)
+            frames = tuple(uow.frames.list_for_video(vid_id))
+            analysis = uow.analyses.get_latest_for_video(vid_id)
             creator: Creator | None = None
             if video.creator_id is not None:
                 creator = uow.creators.get(video.creator_id)
-            hashtags = tuple(uow.hashtags.list_for_video(video.id))  # type: ignore[arg-type]
-            mentions = tuple(uow.mentions.list_for_video(video.id))  # type: ignore[arg-type]
-            links = tuple(uow.links.list_for_video(video.id))  # type: ignore[arg-type]
+            hashtags = tuple(uow.hashtags.list_for_video(vid_id))
+            mentions = tuple(uow.mentions.list_for_video(vid_id))
+            links = tuple(uow.links.list_for_video(vid_id))
 
         return ShowVideoResult(
             found=True,
