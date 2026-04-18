@@ -17,6 +17,7 @@ __all__ = ["show_command"]
 
 
 _DESCRIPTION_PREVIEW_CHARS = 240
+_FRAME_TEXT_PREVIEW_LIMIT = 5
 
 
 def show_command(
@@ -111,3 +112,29 @@ def show_command(
             )
         else:
             console.print("[dim]creator: unknown[/dim]")
+
+        # M008: on-screen text + thumbnail + content_shape
+        if result.frame_texts:
+            count = len(result.frame_texts)
+            ft_preview = result.frame_texts[:_FRAME_TEXT_PREVIEW_LIMIT]
+            console.print(f"[bold]on-screen text:[/bold] {count} block(s)")
+            for ft in ft_preview:
+                conf = f"{ft.confidence:.2f}"
+                console.print(f"  [dim]•[/dim] {ft.text} [dim](conf={conf})[/dim]")
+            if count > _FRAME_TEXT_PREVIEW_LIMIT:
+                console.print(
+                    f"  [dim]...and {count - _FRAME_TEXT_PREVIEW_LIMIT} more[/dim]"
+                )
+        else:
+            console.print("[dim]on-screen text: none[/dim]")
+
+        if result.thumbnail_key:
+            console.print(f"[bold]thumbnail:[/bold] {result.thumbnail_key}")
+        else:
+            console.print("[dim]thumbnail: none[/dim]")
+
+        shape_display = result.content_shape or "unknown"
+        if result.content_shape is None:
+            console.print(f"[dim]content_shape: {shape_display}[/dim]")
+        else:
+            console.print(f"[bold]content_shape:[/bold] {shape_display}")

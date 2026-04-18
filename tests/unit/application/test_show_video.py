@@ -14,6 +14,7 @@ from vidscope.domain import (
     Analysis,
     Creator,
     Frame,
+    FrameText,
     Hashtag,
     Link,
     Mention,
@@ -165,6 +166,25 @@ class FakeLinkRepo:
         return []
 
 
+class FakeFrameTextRepo:
+    def __init__(self, frame_texts_by_video: dict[int, list[FrameText]] | None = None) -> None:
+        self._frame_texts: dict[int, list[FrameText]] = frame_texts_by_video or {}
+
+    def list_for_video(self, video_id: VideoId) -> list[FrameText]:
+        return self._frame_texts.get(int(video_id), [])
+
+    def add_many_for_frame(
+        self, frame_id: int, video_id: VideoId, texts: list[FrameText]
+    ) -> list[FrameText]:
+        return texts
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        return bool(self._frame_texts.get(int(video_id)))
+
+    def find_video_ids_by_text(self, query: str, *, limit: int = 50) -> list[VideoId]:
+        return []
+
+
 class FakeUoW:
     def __init__(
         self,
@@ -177,6 +197,7 @@ class FakeUoW:
         hashtags: FakeHashtagRepo | None = None,
         mentions: FakeMentionRepo | None = None,
         links: FakeLinkRepo | None = None,
+        frame_texts: FakeFrameTextRepo | None = None,
     ) -> None:
         self.videos = videos or FakeVideoRepo()
         self.transcripts = transcripts or FakeTranscriptRepo()
@@ -186,6 +207,7 @@ class FakeUoW:
         self.hashtags = hashtags or FakeHashtagRepo()
         self.mentions = mentions or FakeMentionRepo()
         self.links = links or FakeLinkRepo()
+        self.frame_texts = frame_texts or FakeFrameTextRepo()
 
     def __enter__(self) -> FakeUoW:
         return self
@@ -335,3 +357,114 @@ class TestShowVideoUseCaseEnriched:
         assert result.hashtags == ()
         assert result.mentions == ()
         assert result.links == ()
+
+
+# ---------------------------------------------------------------------------
+# M008 tests — frame_texts + thumbnail_key + content_shape
+# ---------------------------------------------------------------------------
+
+
+def _make_frame_text(vid: int, frame_id: int, text: str, fid: int = 1) -> FrameText:
+    return FrameText(
+        video_id=VideoId(vid),
+        frame_id=frame_id,
+        text=text,
+        confidence=0.90,
+        id=fid,
+    )
+
+
+def _make_video_with_visual(
+    vid: int = 42,
+    thumbnail_key: str | None = None,
+    content_shape: str | None = None,
+) -> Video:
+    return Video(
+        platform=Platform.YOUTUBE,
+        platform_id=PlatformId(f"yt{vid}"),
+        url=f"https://youtube.com/watch?v=yt{vid}",
+        id=VideoId(vid),
+        title=f"Video {vid}",
+        thumbnail_key=thumbnail_key,
+        content_shape=content_shape,
+    )
+
+
+class TestShowVideoM008Fields:
+    def test_defaults_when_not_found(self) -> None:
+        """ShowVideoResult(found=False) a frame_texts=(), thumbnail_key=None, content_shape=None."""
+        result = ShowVideoResult(found=False)
+        assert result.frame_texts == ()
+        assert result.thumbnail_key is None
+        assert result.content_shape is None
+
+    def test_use_case_returns_empty_frame_texts_when_none(self) -> None:
+        """Use case sans frame_texts → result.frame_texts == ()."""
+        vid = 42
+        video = _make_video_with_visual(vid)
+        factory = _make_uow_factory(
+            videos=FakeVideoRepo({vid: video}),
+            frame_texts=FakeFrameTextRepo(),
+        )
+        uc = ShowVideoUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute(vid)
+
+        assert result.found is True
+        assert result.frame_texts == ()
+
+    def test_use_case_returns_frame_texts_when_present(self) -> None:
+        """Use case avec 2 frame_texts → result.frame_texts a 2 éléments."""
+        vid = 42
+        video = _make_video_with_visual(vid)
+        ft1 = _make_frame_text(vid, frame_id=1, text="Hello world", fid=1)
+        ft2 = _make_frame_text(vid, frame_id=2, text="Promo code", fid=2)
+        factory = _make_uow_factory(
+            videos=FakeVideoRepo({vid: video}),
+            frame_texts=FakeFrameTextRepo({vid: [ft1, ft2]}),
+        )
+        uc = ShowVideoUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute(vid)
+
+        assert result.found is True
+        assert len(result.frame_texts) == 2
+        assert result.frame_texts[0].text == "Hello world"
+        assert result.frame_texts[1].text == "Promo code"
+
+    def test_use_case_returns_thumbnail_key(self) -> None:
+        """result.thumbnail_key == video.thumbnail_key depuis la DB."""
+        vid = 42
+        video = _make_video_with_visual(vid, thumbnail_key="videos/yt/abc/thumb.jpg")
+        factory = _make_uow_factory(videos=FakeVideoRepo({vid: video}))
+        uc = ShowVideoUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute(vid)
+
+        assert result.thumbnail_key == "videos/yt/abc/thumb.jpg"
+
+    def test_use_case_returns_content_shape(self) -> None:
+        """result.content_shape == video.content_shape depuis la DB."""
+        vid = 42
+        video = _make_video_with_visual(vid, content_shape="talking_head")
+        factory = _make_uow_factory(videos=FakeVideoRepo({vid: video}))
+        uc = ShowVideoUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute(vid)
+
+        assert result.content_shape == "talking_head"
+
+    def test_frame_texts_is_tuple(self) -> None:
+        """result.frame_texts est bien un tuple (immutabilité)."""
+        vid = 42
+        video = _make_video_with_visual(vid)
+        ft = _make_frame_text(vid, frame_id=1, text="Hi")
+        factory = _make_uow_factory(
+            videos=FakeVideoRepo({vid: video}),
+            frame_texts=FakeFrameTextRepo({vid: [ft]}),
+        )
+        uc = ShowVideoUseCase(unit_of_work_factory=factory)
+
+        result = uc.execute(vid)
+
+        assert isinstance(result.frame_texts, tuple)

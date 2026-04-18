@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 from vidscope.application.show_video import ShowVideoResult
 from vidscope.cli.app import app
 from vidscope.domain import (
+    FrameText,
     Hashtag,
     Link,
     Mention,
@@ -207,3 +208,134 @@ class TestShowCommandBaseline:
         cli_result = _invoke_show(999, result)
 
         assert cli_result.exit_code != 0  # type: ignore[union-attr]
+
+
+# ---------------------------------------------------------------------------
+# M008 CLI tests — on-screen text + thumbnail + content_shape
+# ---------------------------------------------------------------------------
+
+
+def _make_video_with_visual(
+    vid: int = 42,
+    thumbnail_key: str | None = None,
+    content_shape: str | None = None,
+) -> Video:
+    return Video(
+        platform=Platform.YOUTUBE,
+        platform_id=PlatformId(f"yt{vid}"),
+        url=f"https://youtube.com/watch?v=yt{vid}",
+        id=VideoId(vid),
+        title=f"Video {vid}",
+        thumbnail_key=thumbnail_key,
+        content_shape=content_shape,
+    )
+
+
+def _make_frame_text(
+    vid: int, frame_id: int, text: str, fid: int = 1, confidence: float = 0.90
+) -> FrameText:
+    return FrameText(
+        video_id=VideoId(vid),
+        frame_id=frame_id,
+        text=text,
+        confidence=confidence,
+        id=fid,
+    )
+
+
+def _invoke_show_m008(video_id: int, result: ShowVideoResult) -> object:
+    mock_uc = MagicMock()
+    mock_uc.execute.return_value = result
+    container = MagicMock()
+
+    with patch(_PATCH_CONTAINER, return_value=container), patch(
+        _PATCH_USE_CASE, return_value=mock_uc
+    ):
+        return runner.invoke(app, ["show", str(video_id)])
+
+
+class TestShowCommandM008:
+    def test_show_renders_on_screen_text_section(self) -> None:
+        """show 42 avec 3 frame_texts → output contient 'on-screen text: 3 block(s)'."""
+        vid = 42
+        video = _make_video_with_visual(vid)
+        ft1 = _make_frame_text(vid, 1, "Link in bio", fid=1)
+        ft2 = _make_frame_text(vid, 2, "Promo code XYZ", fid=2)
+        ft3 = _make_frame_text(vid, 3, "Subscribe now", fid=3)
+        result = ShowVideoResult(
+            found=True,
+            video=video,
+            frame_texts=(ft1, ft2, ft3),
+        )
+        cli_result = _invoke_show_m008(vid, result)
+
+        assert cli_result.exit_code == 0  # type: ignore[union-attr]
+        assert "on-screen text: 3 block(s)" in cli_result.output  # type: ignore[union-attr]
+        assert "Link in bio" in cli_result.output  # type: ignore[union-attr]
+        assert "Promo code XYZ" in cli_result.output  # type: ignore[union-attr]
+        assert "Subscribe now" in cli_result.output  # type: ignore[union-attr]
+
+    def test_show_renders_none_when_no_frame_texts(self) -> None:
+        """show 42 sans frame_texts → output contient 'on-screen text: none'."""
+        vid = 42
+        video = _make_video_with_visual(vid)
+        result = ShowVideoResult(found=True, video=video, frame_texts=())
+        cli_result = _invoke_show_m008(vid, result)
+
+        assert cli_result.exit_code == 0  # type: ignore[union-attr]
+        assert "on-screen text: none" in cli_result.output  # type: ignore[union-attr]
+
+    def test_show_renders_thumbnail_key(self) -> None:
+        """show 42 avec thumbnail_key → output contient 'thumbnail: <key>'."""
+        vid = 42
+        video = _make_video_with_visual(vid, thumbnail_key="videos/yt/abc/thumb.jpg")
+        result = ShowVideoResult(found=True, video=video, thumbnail_key="videos/yt/abc/thumb.jpg")
+        cli_result = _invoke_show_m008(vid, result)
+
+        assert cli_result.exit_code == 0  # type: ignore[union-attr]
+        assert "videos/yt/abc/thumb.jpg" in cli_result.output  # type: ignore[union-attr]
+        assert "thumbnail" in cli_result.output.lower()  # type: ignore[union-attr]
+
+    def test_show_renders_thumbnail_none(self) -> None:
+        """show 42 sans thumbnail_key → output contient 'thumbnail: none'."""
+        vid = 42
+        video = _make_video_with_visual(vid, thumbnail_key=None)
+        result = ShowVideoResult(found=True, video=video, thumbnail_key=None)
+        cli_result = _invoke_show_m008(vid, result)
+
+        assert cli_result.exit_code == 0  # type: ignore[union-attr]
+        assert "thumbnail: none" in cli_result.output  # type: ignore[union-attr]
+
+    def test_show_renders_content_shape(self) -> None:
+        """show 42 avec content_shape → output contient 'content_shape: talking_head'."""
+        vid = 42
+        video = _make_video_with_visual(vid, content_shape="talking_head")
+        result = ShowVideoResult(found=True, video=video, content_shape="talking_head")
+        cli_result = _invoke_show_m008(vid, result)
+
+        assert cli_result.exit_code == 0  # type: ignore[union-attr]
+        assert "talking_head" in cli_result.output  # type: ignore[union-attr]
+        assert "content_shape" in cli_result.output  # type: ignore[union-attr]
+
+    def test_show_renders_content_shape_unknown_when_none(self) -> None:
+        """show 42 sans content_shape → output contient 'content_shape: unknown'."""
+        vid = 42
+        video = _make_video_with_visual(vid, content_shape=None)
+        result = ShowVideoResult(found=True, video=video, content_shape=None)
+        cli_result = _invoke_show_m008(vid, result)
+
+        assert cli_result.exit_code == 0  # type: ignore[union-attr]
+        assert "content_shape: unknown" in cli_result.output  # type: ignore[union-attr]
+
+    def test_show_preview_cap_with_more_indicator(self) -> None:
+        """show 42 avec 10 frame_texts → output contient '...and 5 more'."""
+        vid = 42
+        video = _make_video_with_visual(vid)
+        frame_texts = tuple(
+            _make_frame_text(vid, i, f"text {i}", fid=i) for i in range(1, 11)
+        )
+        result = ShowVideoResult(found=True, video=video, frame_texts=frame_texts)
+        cli_result = _invoke_show_m008(vid, result)
+
+        assert cli_result.exit_code == 0  # type: ignore[union-attr]
+        assert "...and 5 more" in cli_result.output  # type: ignore[union-attr]

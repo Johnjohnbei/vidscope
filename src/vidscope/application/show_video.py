@@ -8,6 +8,7 @@ from vidscope.domain import (
     Analysis,
     Creator,
     Frame,
+    FrameText,
     Hashtag,
     Link,
     Mention,
@@ -27,9 +28,10 @@ class ShowVideoResult:
     ``found`` is ``False`` when no video matches the given id; the
     other fields are then empty/None.
 
-    M007 adds ``hashtags``, ``mentions``, ``links`` as tuples; they
-    default to empty on miss so existing callers keep working without
-    modification.
+    M007 adds ``hashtags``, ``mentions``, ``links``. M008 adds
+    ``frame_texts`` (on-screen OCR), ``thumbnail_key`` (canonical
+    thumbnail path), ``content_shape`` (face-count heuristic).
+    All defaults are safe-empty so existing callers keep working.
     """
 
     found: bool
@@ -41,6 +43,9 @@ class ShowVideoResult:
     hashtags: tuple[Hashtag, ...] = ()
     mentions: tuple[Mention, ...] = ()
     links: tuple[Link, ...] = ()
+    frame_texts: tuple[FrameText, ...] = ()
+    thumbnail_key: str | None = None
+    content_shape: str | None = None
 
 
 class ShowVideoUseCase:
@@ -76,6 +81,7 @@ class ShowVideoUseCase:
             hashtags = tuple(uow.hashtags.list_for_video(vid_id))
             mentions = tuple(uow.mentions.list_for_video(vid_id))
             links = tuple(uow.links.list_for_video(vid_id))
+            frame_texts = tuple(uow.frame_texts.list_for_video(vid_id))
 
         return ShowVideoResult(
             found=True,
@@ -87,4 +93,7 @@ class ShowVideoUseCase:
             hashtags=hashtags,
             mentions=mentions,
             links=links,
+            frame_texts=frame_texts,
+            thumbnail_key=video.thumbnail_key,
+            content_shape=video.content_shape,
         )
