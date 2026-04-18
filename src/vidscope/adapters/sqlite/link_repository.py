@@ -58,7 +58,19 @@ class LinkRepositorySQLite:
                 )
             if not payloads:
                 return []
-            self._conn.execute(links_table.insert().values(payloads))
+            result = self._conn.execute(links_table.insert().values(payloads))
+            # Verify the INSERT was acknowledged by the DB driver.  A None or
+            # zero rowcount indicates a silent failure (e.g. unexpected
+            # transaction rollback) that would cause list_for_video to return
+            # an empty list, breaking the "returns persisted entities with id
+            # populated" contract.
+            if result.rowcount is None or result.rowcount == 0:
+                raise StorageError(
+                    f"add_many_for_video: insert acknowledged but no rows "
+                    f"written for video {int(video_id)}"
+                )
+        except StorageError:
+            raise
         except Exception as exc:
             raise StorageError(
                 f"add_many_for_video failed for links of video "
