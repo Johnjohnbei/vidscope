@@ -72,8 +72,9 @@ class FakeTranscriptRepo:
 
 
 class FakeLinkRepo:
-    def __init__(self, *, has_any: bool = False) -> None:
+    def __init__(self, *, has_any: bool = False, rows: list[Link] | None = None) -> None:
         self._has_any = has_any
+        self._rows: list[Link] = rows or []
         self.added_calls: list[tuple[VideoId, list[Link]]] = []
 
     def has_any_for_video(self, video_id: VideoId) -> bool:
@@ -83,6 +84,12 @@ class FakeLinkRepo:
         self.added_calls.append((video_id, links))
         # Simulate persistence by returning the same links (id not set but OK for tests)
         return links
+
+    def list_for_video(self, video_id: VideoId, *, source: str | None = None) -> list[Link]:
+        out = [r for r in self._rows if r.video_id == video_id]
+        if source is not None:
+            out = [r for r in out if r.source == source]
+        return out
 
 
 class FakeUoW:
@@ -94,10 +101,11 @@ class FakeUoW:
         video: FakeVideo | None = None,
         transcript: FakeTranscript | None = None,
         links_has_any: bool = False,
+        links_rows: list[Link] | None = None,
     ) -> None:
         self.videos = FakeVideoRepo(video)
         self.transcripts = FakeTranscriptRepo(transcript)
-        self.links = FakeLinkRepo(has_any=links_has_any)
+        self.links = FakeLinkRepo(has_any=links_has_any, rows=links_rows)
 
 
 # ---------------------------------------------------------------------------
@@ -122,14 +130,22 @@ class TestIsSatisfied:
         assert stage.is_satisfied(ctx, uow) is False  # type: ignore[arg-type]
 
     def test_links_exist_returns_true(self) -> None:
-        """Test 2: links.has_any_for_video returns True → is_satisfied True."""
+        """Test 2: description link exists → is_satisfied True (M008: only non-OCR links count)."""
         stage = self._stage()
         ctx = self._ctx(VideoId(42))
-        uow = FakeUoW(links_has_any=True)
+        uow = FakeUoW(links_rows=[
+            Link(
+                video_id=VideoId(42),
+                url="https://example.com",
+                normalized_url="https://example.com",
+                source="description",
+                id=1,
+            )
+        ])
         assert stage.is_satisfied(ctx, uow) is True  # type: ignore[arg-type]
 
     def test_no_links_returns_false(self) -> None:
-        """Test 3: links.has_any_for_video returns False → is_satisfied False."""
+        """Test 3: no links → is_satisfied False."""
         stage = self._stage()
         ctx = self._ctx(VideoId(42))
         uow = FakeUoW(links_has_any=False)
@@ -265,3 +281,71 @@ class TestExecute:
 
         assert isinstance(result, StageResult)
         assert "1" in result.message
+
+
+# ---------------------------------------------------------------------------
+# M008/S02: OCR-only links must NOT satisfy metadata_extract (T02)
+# ---------------------------------------------------------------------------
+
+
+def _make_link(video_id: int, source: str, url: str = "https://example.com") -> Link:
+    return Link(
+        video_id=VideoId(video_id),
+        url=url,
+        normalized_url=url.lower(),
+        source=source,
+        position_ms=None,
+        id=1,
+    )
+
+
+class TestIsSatisfiedOCRInteraction:
+    """M008/S02: OCR-only links must NOT satisfy metadata_extract."""
+
+    def _stage(self) -> MetadataExtractStage:
+        return MetadataExtractStage(link_extractor=FakeLinkExtractor())
+
+    def _ctx(self, video_id: int = 1) -> MagicMock:
+        ctx = MagicMock()
+        ctx.video_id = VideoId(video_id)
+        return ctx
+
+    def test_satisfied_when_description_link_exists(self) -> None:
+        """description-source link → is_satisfied True."""
+        stage = self._stage()
+        ctx = self._ctx()
+        uow = FakeUoW(links_rows=[_make_link(1, "description")])
+        assert stage.is_satisfied(ctx, uow) is True  # type: ignore[arg-type]
+
+    def test_satisfied_when_transcript_link_exists(self) -> None:
+        """transcript-source link → is_satisfied True."""
+        stage = self._stage()
+        ctx = self._ctx()
+        uow = FakeUoW(links_rows=[_make_link(1, "transcript")])
+        assert stage.is_satisfied(ctx, uow) is True  # type: ignore[arg-type]
+
+    def test_not_satisfied_when_only_ocr_links_exist(self) -> None:
+        """Only source='ocr' links → is_satisfied False (M008 fix)."""
+        stage = self._stage()
+        ctx = self._ctx()
+        uow = FakeUoW(links_rows=[_make_link(1, "ocr")])
+        assert stage.is_satisfied(ctx, uow) is False  # type: ignore[arg-type]
+
+    def test_satisfied_when_ocr_and_description_coexist(self) -> None:
+        """Both ocr + description links → is_satisfied True."""
+        stage = self._stage()
+        ctx = self._ctx()
+        uow = FakeUoW(
+            links_rows=[
+                _make_link(1, "ocr", "https://ocr-link.com"),
+                _make_link(1, "description", "https://desc-link.com"),
+            ]
+        )
+        assert stage.is_satisfied(ctx, uow) is True  # type: ignore[arg-type]
+
+    def test_not_satisfied_when_no_links(self) -> None:
+        """Empty links → is_satisfied False (unchanged behaviour preserved)."""
+        stage = self._stage()
+        ctx = self._ctx()
+        uow = FakeUoW(links_rows=[])
+        assert stage.is_satisfied(ctx, uow) is False  # type: ignore[arg-type]

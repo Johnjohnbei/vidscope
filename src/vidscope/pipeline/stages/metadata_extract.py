@@ -8,9 +8,12 @@ pipeline graph (see ``StageName`` enum order).
 
 Resume-from-failure
 -------------------
-``is_satisfied`` returns True when ``uow.links.has_any_for_video(video_id)``
-is True — re-runs of ``vidscope add <url>`` on an already-extracted
-video skip this stage entirely.
+``is_satisfied`` returns True when at least one link with
+``source in {'description', 'transcript'}`` exists for the video.
+OCR-sourced links (M008) are produced by :class:`VisualIntelligenceStage`
+which runs BEFORE this stage, so they must NOT count toward
+satisfaction — otherwise this stage would skip whenever OCR found a
+URL, and caption/transcript links would never be extracted.
 
 Idempotence caveat
 ------------------
@@ -61,11 +64,26 @@ class MetadataExtractStage:
     # ------------------------------------------------------------------
 
     def is_satisfied(self, ctx: PipelineContext, uow: UnitOfWork) -> bool:
-        """Return True when at least one link already exists for
-        ``ctx.video_id``. Cheap DB query — no regex re-run."""
+        """Return True when at least one NON-OCR link exists for
+        ``ctx.video_id``.
+
+        Rationale: M008/S02's :class:`VisualIntelligenceStage` runs
+        BEFORE this stage and populates ``links`` rows with
+        ``source='ocr'``. If we checked ``has_any_for_video`` (any
+        source), this stage would skip on a fresh video whenever OCR
+        found a URL, and description/transcript links would never be
+        extracted. The correct satisfaction check is "description or
+        transcript links already exist" — both are this stage's
+        outputs. OCR-sourced links are the responsibility of
+        visual_intelligence and do not count.
+        """
         if ctx.video_id is None:
             return False
-        return uow.links.has_any_for_video(ctx.video_id)
+        description_links = uow.links.list_for_video(ctx.video_id, source="description")
+        if description_links:
+            return True
+        transcript_links = uow.links.list_for_video(ctx.video_id, source="transcript")
+        return bool(transcript_links)
 
     def execute(self, ctx: PipelineContext, uow: UnitOfWork) -> StageResult:
         """Extract URLs from description + transcript, persist them.
