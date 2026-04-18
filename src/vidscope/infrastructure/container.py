@@ -47,6 +47,7 @@ from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from vidscope.adapters.text import RegexLinkExtractor
+from vidscope.adapters.vision import RapidOcrEngine
 from vidscope.adapters.whisper import FasterWhisperTranscriber
 from vidscope.adapters.ytdlp import YtdlpDownloader
 from vidscope.infrastructure.analyzer_registry import build_analyzer
@@ -60,6 +61,7 @@ from vidscope.pipeline.stages import (
     IngestStage,
     MetadataExtractStage,
     TranscribeStage,
+    VisualIntelligenceStage,
 )
 from vidscope.ports.clock import Clock
 from vidscope.ports.pipeline import (
@@ -217,7 +219,22 @@ def build_container(config: Config | None = None) -> Container:
         cache_dir=resolved_config.cache_dir,
     )
     analyze_stage = AnalyzeStage(analyzer=analyzer)
+
     link_extractor = RegexLinkExtractor()
+
+    # M008/S02 — vision stage runs AFTER frames and BEFORE
+    # metadata_extract. RapidOcrEngine is lazy-loaded: the ONNX
+    # model (~50MB) downloads on the first OCR call, not here.
+    # If rapidocr-onnxruntime is not installed, the engine
+    # returns [] for every frame and the stage emits SKIPPED
+    # (see VisualIntelligenceStage.execute).
+    ocr_engine = RapidOcrEngine()
+    visual_intelligence_stage = VisualIntelligenceStage(
+        ocr_engine=ocr_engine,
+        link_extractor=link_extractor,
+        media_storage=media_storage,
+    )
+
     metadata_extract_stage = MetadataExtractStage(
         link_extractor=link_extractor,
     )
@@ -229,6 +246,7 @@ def build_container(config: Config | None = None) -> Container:
             transcribe_stage,
             frames_stage,
             analyze_stage,
+            visual_intelligence_stage,  # NEW — M008/S02
             metadata_extract_stage,
             index_stage,
         ],
