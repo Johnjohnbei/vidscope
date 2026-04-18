@@ -238,20 +238,16 @@ class TestExecute:
         with pytest.raises(IndexingError):
             stage.execute(ctx, uow)  # type: ignore[arg-type]
 
-    def test_missing_video_row_description_treated_as_none(self) -> None:
-        """Test 9: uow.videos.get returns None → description=None → extractor returns []."""
+    def test_missing_video_row_raises_indexing_error(self) -> None:
+        """Test 9: uow.videos.get returns None → IndexingError raised (explicit failure)."""
         extractor = FakeLinkExtractor()
         stage = MetadataExtractStage(link_extractor=extractor)
 
-        # video=None simulates a row that doesn't exist yet
         uow = FakeUoW(video=None, transcript=None)
         ctx = self._ctx(VideoId(5))
-        result = stage.execute(ctx, uow)  # type: ignore[arg-type]
 
-        # Should not crash; extractor should not be called with description
-        desc_calls = [c for c in extractor.calls if c[1] == "description"]
-        assert desc_calls == []
-        assert "0" in result.message
+        with pytest.raises(IndexingError):
+            stage.execute(ctx, uow)  # type: ignore[arg-type]
 
     def test_execute_returns_stage_result_with_count_message(self) -> None:
         """Test 10: StageResult.message contains number of persisted links."""
