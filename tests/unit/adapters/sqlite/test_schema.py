@@ -248,3 +248,93 @@ class TestVideosCreatorIdAlter:
         with eng.begin() as conn:
             _ensure_videos_creator_id(conn)  # second call, no error
             _ensure_videos_creator_id(conn)  # third call, no error
+
+
+class TestM007Schema:
+    """M007/S01-P02: hashtags/mentions tables + _ensure_videos_metadata_columns."""
+
+    def test_hashtags_table_exists(self, engine: Engine) -> None:
+        names = set(inspect(engine).get_table_names())
+        assert "hashtags" in names
+
+    def test_mentions_table_exists(self, engine: Engine) -> None:
+        names = set(inspect(engine).get_table_names())
+        assert "mentions" in names
+
+    def test_videos_has_description_column(self, engine: Engine) -> None:
+        cols = {c["name"] for c in inspect(engine).get_columns("videos")}
+        assert "description" in cols
+
+    def test_videos_has_music_track_column(self, engine: Engine) -> None:
+        cols = {c["name"] for c in inspect(engine).get_columns("videos")}
+        assert "music_track" in cols
+
+    def test_videos_has_music_artist_column(self, engine: Engine) -> None:
+        cols = {c["name"] for c in inspect(engine).get_columns("videos")}
+        assert "music_artist" in cols
+
+    def test_init_db_idempotent_m007(self, engine: Engine) -> None:
+        """init_db called twice must not raise with M007 helpers."""
+        init_db(engine)
+        init_db(engine)
+
+    def test_ensure_videos_metadata_columns_directly_idempotent(
+        self, tmp_path: object
+    ) -> None:
+        """Call _ensure_videos_metadata_columns twice explicitly."""
+        from pathlib import Path
+
+        from vidscope.adapters.sqlite.schema import (
+            _ensure_videos_metadata_columns,
+        )
+        from vidscope.infrastructure.sqlite_engine import build_engine
+
+        eng = build_engine(Path(str(tmp_path)) / "m007_idem.db")  # type: ignore[arg-type]
+        init_db(eng)
+        with eng.begin() as conn:
+            _ensure_videos_metadata_columns(conn)  # second call — must be no-op
+            _ensure_videos_metadata_columns(conn)  # third call
+
+    def test_upgrade_path_adds_metadata_columns(self, tmp_path: object) -> None:
+        """Simulate pre-M007 DB (no description/music columns) then run init_db."""
+        from pathlib import Path
+
+        from vidscope.infrastructure.sqlite_engine import build_engine
+
+        db_path = Path(str(tmp_path)) / "pre_m007.db"  # type: ignore[arg-type]
+        eng = build_engine(db_path)
+
+        # Pre-M007 minimal videos table (no description/music_track/music_artist)
+        with eng.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE videos ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "platform TEXT NOT NULL, "
+                    "platform_id TEXT NOT NULL UNIQUE, "
+                    "url TEXT NOT NULL, "
+                    "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                    ")"
+                )
+            )
+            # Also create creators table (required for FK in videos)
+            conn.execute(
+                text(
+                    "CREATE TABLE creators ("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "platform TEXT NOT NULL, "
+                    "platform_user_id TEXT NOT NULL, "
+                    "is_orphan INTEGER NOT NULL DEFAULT 0, "
+                    "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, "
+                    "UNIQUE(platform, platform_user_id)"
+                    ")"
+                )
+            )
+
+        # Now run init_db — should add the 3 metadata columns
+        init_db(eng)
+
+        cols = {c["name"] for c in inspect(eng).get_columns("videos")}
+        assert "description" in cols
+        assert "music_track" in cols
+        assert "music_artist" in cols

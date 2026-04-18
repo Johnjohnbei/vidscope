@@ -185,6 +185,9 @@ def _video_to_row(video: Video) -> dict[str, Any]:
         "view_count": video.view_count,
         "media_key": video.media_key,
         "created_at": video.created_at or datetime.now(UTC),
+        "description": video.description,
+        "music_track": video.music_track,
+        "music_artist": video.music_artist,
     }
 
 
@@ -208,6 +211,9 @@ def _row_to_video(row: Any) -> Video:
             if data.get("creator_id") is not None
             else None
         ),
+        description=data.get("description"),
+        music_track=data.get("music_track"),
+        music_artist=data.get("music_artist"),
     )
 
 

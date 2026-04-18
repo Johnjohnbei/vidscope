@@ -224,3 +224,44 @@ class TestWriteThroughAuthor:
                 # no creator kwarg
             )
             assert v.author == "Legacy Author"
+
+
+class TestVideoM007MetadataFields:
+    """M007/S01-P02: description, music_track, music_artist round-trip."""
+
+    def test_add_with_m007_fields_round_trips(self, engine: Engine) -> None:
+        """Adding a Video with all 3 M007 fields preserves them on get."""
+        with SqliteUnitOfWork(engine) as uow:
+            stored = uow.videos.add(
+                _sample_video(
+                    platform_id=PlatformId("m007_v1"),
+                    description="A cooking tutorial",
+                    music_track="Lo-Fi Beat",
+                    music_artist="DJ Chill",
+                )
+            )
+            assert stored.id is not None
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get(stored.id)  # type: ignore[arg-type]
+            assert found is not None
+            assert found.description == "A cooking tutorial"
+            assert found.music_track == "Lo-Fi Beat"
+            assert found.music_artist == "DJ Chill"
+
+    def test_add_without_m007_fields_defaults_to_none(
+        self, engine: Engine
+    ) -> None:
+        """Backward-compat: Videos without M007 fields get None on read."""
+        with SqliteUnitOfWork(engine) as uow:
+            stored = uow.videos.add(
+                _sample_video(platform_id=PlatformId("m007_v2"))
+            )
+            assert stored.id is not None
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get(stored.id)  # type: ignore[arg-type]
+            assert found is not None
+            assert found.description is None
+            assert found.music_track is None
+            assert found.music_artist is None
