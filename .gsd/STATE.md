@@ -1,9 +1,9 @@
 # GSD State
 
-**Last Completed Milestone:** M009 (complete — S01/S02/S03/S04 all done)
-**Active Slice:** None (M009 complete)
-**Phase:** M009
-**Requirements Status:** R050 (VideoStats entity + velocity metrics — S01), R051 (refresh-stats CLI + watchlist integration — S02/S03), R052 (trending + show stats — S04)
+**Last Completed Milestone:** M010 (complete — S01/S02/S03/S04 all done, 29/29 verified)
+**Active Slice:** None (M010 complete)
+**Phase:** M010
+**Requirements Status:** R053 (domain score vector + sentiment/sponsor/content_type — S01/S02/S03), R054 (taxonomy catalog 12 verticals + 206 keywords — S01/S02), R055 (reasoning field + ExplainAnalysis CLI — S01/S03/S04)
 
 ## Milestone Registry
 - ✅ **M001:** Pipeline ponctuel end-to-end
@@ -15,7 +15,7 @@
 - ✅ **M007:** Rich content metadata — descriptions, links, hashtags, mentions, music
 - ✅ **M008:** Visual intelligence on frames — OCR, thumbnail, content-shape
 - ✅ **M009:** Engagement signals + velocity tracking (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
-- 📋 **M010:** Multi-dimensional scoring + controlled taxonomy (roadmap ready)
+- ✅ **M010:** Multi-dimensional scoring + controlled taxonomy (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
 - 📋 **M011:** Veille workflow layer — tracking, tags, collections, exports (roadmap ready)
 
 ## Recent Decisions
