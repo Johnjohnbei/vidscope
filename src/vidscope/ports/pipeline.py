@@ -42,6 +42,7 @@ from vidscope.domain import (
     Analysis,
     Frame,
     Language,
+    Mention,
     Platform,
     PlatformId,
     Transcript,
@@ -206,8 +207,17 @@ class IngestOutcome:
     ``creator_info`` is populated when yt-dlp exposes ``uploader_id``
     (the D-01 canonical UNIQUE key on ``creators``). ``None`` is a
     legitimate outcome for compilations, playlists without a single
-    uploader, and extractors that don't expose an uploader (D-02:
+    uploader, and extractors that don't expose an uploader (M006 D-02:
     ingest succeeds with ``creator_id=NULL``).
+
+    ``description``, ``hashtags``, ``mentions``, ``music_track``,
+    ``music_artist`` are M007 additions (R043, R045). Every field is
+    optional with a safe default so M006 callers keep working without
+    modification. Per M007 D-01 the caption + music are persisted on
+    the ``videos`` row directly (no side entity); per D-05 the
+    hashtags and mentions land in side tables. Each field is ``None``
+    / empty tuple when the platform does not expose it — NEVER a
+    synthesised placeholder (per R045).
     """
 
     platform: Platform
@@ -220,6 +230,11 @@ class IngestOutcome:
     upload_date: str | None = None
     view_count: int | None = None
     creator_info: CreatorInfo | None = None
+    description: str | None = None
+    hashtags: tuple[str, ...] = ()
+    mentions: tuple[Mention, ...] = ()
+    music_track: str | None = None
+    music_artist: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
