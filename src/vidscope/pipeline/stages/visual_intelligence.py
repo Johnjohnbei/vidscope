@@ -239,7 +239,8 @@ class VisualIntelligenceStage:
                 platform_segment = ctx.platform.value if ctx.platform else "unknown"
                 id_segment = str(ctx.platform_id or ctx.video_id)
                 # T-M008-S03-01 defensive: reject path-traversal in id_segment
-                if "/" in id_segment or ".." in id_segment:
+                # Check both forward-slash (Unix) and backslash (Windows, WR-02).
+                if "/" in id_segment or "\\" in id_segment or ".." in id_segment:
                     _logger.warning(
                         "visual_intelligence: suspicious platform_id %r for video %s, "
                         "skipping thumbnail copy",
