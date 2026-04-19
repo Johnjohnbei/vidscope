@@ -33,6 +33,7 @@ Design notes
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -88,12 +89,14 @@ class FasterWhisperTranscriber:
         device: str = "cpu",
         compute_type: str = "int8",
         initial_prompt: str | None = None,
+        post_corrections: list[tuple[str, str]] | None = None,
     ) -> None:
         self._model_name = model_name
         self._models_dir = models_dir
         self._device = device
         self._compute_type = compute_type
         self._initial_prompt = initial_prompt
+        self._post_corrections: list[tuple[str, str]] = post_corrections or []
         self._model: WhisperModel | None = None
 
     @property
@@ -153,6 +156,16 @@ class FasterWhisperTranscriber:
                 cause=exc,
             ) from exc
 
+        if self._post_corrections:
+            segments = tuple(
+                TranscriptSegment(
+                    start=seg.start,
+                    end=seg.end,
+                    text=_apply_corrections(seg.text, self._post_corrections),
+                )
+                for seg in segments
+            )
+
         full_text = " ".join(seg.text for seg in segments if seg.text)
         language = _map_language(getattr(info, "language", None))
 
@@ -200,6 +213,12 @@ class FasterWhisperTranscriber:
             ) from exc
 
         return self._model
+
+
+def _apply_corrections(text: str, corrections: list[tuple[str, str]]) -> str:
+    for wrong, right in corrections:
+        text = re.sub(re.escape(wrong), right, text, flags=re.IGNORECASE)
+    return text
 
 
 def _map_language(detected: Any) -> Language:

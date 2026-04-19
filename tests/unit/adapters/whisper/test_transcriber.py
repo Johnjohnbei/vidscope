@@ -362,3 +362,89 @@ class TestLazyLoading:
 
         instances = getattr(fake_model_class, "instances", [])
         assert len(instances) == 1, "model should be loaded only once"
+
+
+# ---------------------------------------------------------------------------
+# Post-corrections
+# ---------------------------------------------------------------------------
+
+
+def _make_fake_with_segments(
+    segments: list[FakeSegment], language: str = "fr"
+) -> type[FakeWhisperModel]:
+    class _Fake(FakeWhisperModel):
+        def __init__(self, model_name: str, **kwargs: Any) -> None:
+            super().__init__(model_name, **kwargs)
+            self.configure(segments=segments, language=language)
+
+    return _Fake
+
+
+class TestPostCorrections:
+    def _transcribe_with(
+        self,
+        tmp_path: Path,
+        segments: list[FakeSegment],
+        corrections: list[tuple[str, str]],
+    ):
+        import faster_whisper
+
+        media = tmp_path / "video.mp4"
+        media.write_bytes(b"fake")
+        original = faster_whisper.WhisperModel
+        faster_whisper.WhisperModel = _make_fake_with_segments(segments)
+        try:
+            t = FasterWhisperTranscriber(
+                model_name="base",
+                models_dir=tmp_path / "models",
+                post_corrections=corrections,
+            )
+            return t.transcribe(str(media))
+        finally:
+            faster_whisper.WhisperModel = original
+
+    def test_corrects_segment_text(self, tmp_path: Path) -> None:
+        result = self._transcribe_with(
+            tmp_path,
+            [FakeSegment(0.0, 2.0, "Lancer CloudCode dans le terminal.")],
+            [("CloudCode", "Claude Code")],
+        )
+        assert result.segments[0].text == "Lancer Claude Code dans le terminal."
+
+    def test_corrects_full_text(self, tmp_path: Path) -> None:
+        result = self._transcribe_with(
+            tmp_path,
+            [FakeSegment(0.0, 2.0, "Lancer CloudCode dans le terminal.")],
+            [("CloudCode", "Claude Code")],
+        )
+        assert "Claude Code" in result.full_text
+        assert "CloudCode" not in result.full_text
+
+    def test_corrections_are_case_insensitive(self, tmp_path: Path) -> None:
+        result = self._transcribe_with(
+            tmp_path,
+            [FakeSegment(0.0, 1.0, "mes projets cloud code au terminal.")],
+            [("Cloud Code", "Claude Code")],
+        )
+        assert "Claude Code" in result.segments[0].text
+        assert "cloud code" not in result.segments[0].text
+
+    def test_no_corrections_leaves_text_unchanged(self, tmp_path: Path) -> None:
+        result = self._transcribe_with(
+            tmp_path,
+            [FakeSegment(0.0, 1.0, "Cloud Code")],
+            [],
+        )
+        assert result.segments[0].text == "Cloud Code"
+
+    def test_multi_segment_all_corrected(self, tmp_path: Path) -> None:
+        result = self._transcribe_with(
+            tmp_path,
+            [
+                FakeSegment(0.0, 1.0, "Cloud Code est utile."),
+                FakeSegment(1.0, 2.0, "J'utilise cloud code tous les jours."),
+            ],
+            [("Cloud Code", "Claude Code")],
+        )
+        assert all("cloud code" not in s.text.lower() for s in result.segments)
+        assert all("Claude Code" in s.text for s in result.segments)

@@ -46,6 +46,28 @@ class YamlVocabularySource:
         self._path = path
         self._engine = engine
 
+    def load_corrections(self) -> list[tuple[str, str]]:
+        """Retourne la liste (wrong, right) depuis la section ``corrections``.
+
+        Utilisé par FasterWhisperTranscriber pour post-traiter les transcripts.
+        Jamais de crash : absent ou invalide → liste vide.
+        """
+        raw = self._read_yaml()
+        if raw is None:
+            return []
+        entries = raw.get("corrections", [])
+        if not isinstance(entries, list):
+            return []
+        result: list[tuple[str, str]] = []
+        for entry in entries:
+            if isinstance(entry, dict):
+                wrong = entry.get("wrong")
+                right = entry.get("right")
+                if isinstance(wrong, str) and isinstance(right, str) and wrong.strip():
+                    result.append((wrong.strip(), right.strip()))
+        _logger.debug("Vocabulary corrections : %d règles chargées", len(result))
+        return result
+
     def build_prompt(self) -> str | None:
         """Retourne une chaîne de termes séparés par des virgules, ou None.
 
@@ -64,23 +86,29 @@ class YamlVocabularySource:
     # Chargement YAML
     # ------------------------------------------------------------------
 
-    def _load_yaml_terms(self) -> list[str]:
+    def _read_yaml(self) -> dict[str, object] | None:
+        """Lit et parse vocabulary.yaml. Retourne None si absent ou invalide."""
         if not self._path.is_file():
-            _logger.debug("vocabulary.yaml absent (%s) — termes statiques ignorés", self._path)
-            return []
+            _logger.debug("vocabulary.yaml absent (%s)", self._path)
+            return None
         try:
             with self._path.open(encoding="utf-8") as fh:
                 raw = yaml.safe_load(fh)
         except Exception as exc:
             _logger.warning("Impossible de lire vocabulary.yaml : %s", exc)
-            return []
-
+            return None
         if not isinstance(raw, dict):
             _logger.warning("vocabulary.yaml : format invalide (attendu: dict de sections)")
+            return None
+        return raw
+
+    def _load_yaml_terms(self) -> list[str]:
+        raw = self._read_yaml()
+        if raw is None:
             return []
 
         terms: list[str] = []
-        for section, entries in raw.items():
+        for _section, entries in raw.items():
             if not isinstance(entries, list):
                 continue
             for entry in entries:

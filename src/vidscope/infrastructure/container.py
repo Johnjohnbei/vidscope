@@ -206,12 +206,15 @@ def build_container(config: Config | None = None) -> Container:
     _vocab_path = Path("config") / "vocabulary.yaml"
     if not _vocab_path.is_absolute():
         _vocab_path = Path.cwd() / _vocab_path
-    _vocab_prompt = YamlVocabularySource(_vocab_path, engine=engine).build_prompt()
+    _vocab_source = YamlVocabularySource(_vocab_path, engine=engine)
+    _vocab_prompt = _vocab_source.build_prompt()
+    _vocab_corrections = _vocab_source.load_corrections()
 
     transcriber = FasterWhisperTranscriber(
         model_name=resolved_config.whisper_model,
         models_dir=resolved_config.models_dir,
         initial_prompt=_vocab_prompt,
+        post_corrections=_vocab_corrections,
     )
 
     # FfmpegFrameExtractor checks for the ffmpeg binary lazily at
