@@ -46,6 +46,23 @@ class YamlVocabularySource:
         self._path = path
         self._engine = engine
 
+    def build_hotwords(self) -> str | None:
+        """Retourne les hotwords sous forme de chaîne pour faster-whisper.
+
+        Les hotwords boostent directement les tokens dans le beam search,
+        plus efficace que l'initial_prompt pour les noms propres ambigus.
+        """
+        raw = self._read_yaml()
+        if raw is None:
+            return None
+        entries = raw.get("hotwords", [])
+        if not isinstance(entries, list):
+            return None
+        terms = [str(e).strip() for e in entries if isinstance(e, str) and str(e).strip()]
+        if not terms:
+            return None
+        return ", ".join(terms)
+
     def load_corrections(self) -> list[tuple[str, str]]:
         """Retourne la liste (wrong, right) depuis la section ``corrections``.
 

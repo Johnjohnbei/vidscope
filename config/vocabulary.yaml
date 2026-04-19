@@ -101,6 +101,16 @@ en:
 # Corrections post-transcription : chaque entrée remplace `wrong` par `right`
 # de façon insensible à la casse, sur le texte complet et chaque segment.
 # Ajouter ici tout terme que Whisper transcrit systématiquement de façon erronée.
+# Hotwords : mots à renforcer directement dans le beam search de Whisper.
+# Plus ciblé que l'initial_prompt — boost direct des tokens phonétiquement ambigus.
+hotwords:
+  - Claude Code
+  - Claude Agent SDK
+  - Claude Sonnet
+  - Claude Opus
+  - Claude Haiku
+  - Anthropic
+
 corrections:
   - wrong: "CloudCode"
     right: "Claude Code"

@@ -209,12 +209,14 @@ def build_container(config: Config | None = None) -> Container:
     _vocab_source = YamlVocabularySource(_vocab_path, engine=engine)
     _vocab_prompt = _vocab_source.build_prompt()
     _vocab_corrections = _vocab_source.load_corrections()
+    _vocab_hotwords = _vocab_source.build_hotwords()
 
     transcriber = FasterWhisperTranscriber(
         model_name=resolved_config.whisper_model,
         models_dir=resolved_config.models_dir,
         initial_prompt=_vocab_prompt,
         post_corrections=_vocab_corrections,
+        hotwords=_vocab_hotwords,
     )
 
     # FfmpegFrameExtractor checks for the ffmpeg binary lazily at

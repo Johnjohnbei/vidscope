@@ -90,6 +90,7 @@ class FasterWhisperTranscriber:
         compute_type: str = "int8",
         initial_prompt: str | None = None,
         post_corrections: list[tuple[str, str]] | None = None,
+        hotwords: str | None = None,
     ) -> None:
         self._model_name = model_name
         self._models_dir = models_dir
@@ -97,6 +98,7 @@ class FasterWhisperTranscriber:
         self._compute_type = compute_type
         self._initial_prompt = initial_prompt
         self._post_corrections: list[tuple[str, str]] = post_corrections or []
+        self._hotwords = hotwords
         self._model: WhisperModel | None = None
 
     @property
@@ -139,6 +141,7 @@ class FasterWhisperTranscriber:
                 vad_filter=False,
                 beam_size=5,
                 initial_prompt=self._initial_prompt,
+                hotwords=self._hotwords,
             )
             # faster-whisper returns a generator — drain it eagerly
             # so any underlying decode error surfaces here, not later.
