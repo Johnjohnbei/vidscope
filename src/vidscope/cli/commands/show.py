@@ -1,10 +1,4 @@
-"""`vidscope show <id>` — show the full record for a video id.
-
-D-05 (M009/S04): extended with a Stats section that displays the latest
-captured engagement counters and the computed views_velocity_24h. When no
-stats have been captured yet, an actionable message points the user to the
-correct remediation command.
-"""
+"""`vidscope show <id>` — show the full record for a video id."""
 
 from __future__ import annotations
 
@@ -21,6 +15,9 @@ from vidscope.cli._support import (
 
 __all__ = ["show_command"]
 
+_DESC_MAX = 240
+_FRAME_TEXT_PREVIEW = 5
+
 
 def show_command(
     video_id: int = typer.Argument(..., help="Numeric id of the video to show."),
@@ -35,6 +32,10 @@ def show_command(
             raise fail_user(f"no video with id {video_id}")
 
         video = result.video
+        desc = video.description or "-"
+        if len(desc) > _DESC_MAX:
+            desc = desc[:_DESC_MAX] + "..."
+
         lines = [
             f"[bold]id:[/bold] {video.id}",
             f"[bold]platform:[/bold] {video.platform.value}",
@@ -45,6 +46,7 @@ def show_command(
             f"[bold]duration:[/bold] "
             f"{f'{video.duration:.1f}s' if video.duration else '-'}",
             f"[bold]media_key:[/bold] {video.media_key or '-'}",
+            f"[bold]description:[/bold] {desc}",
         ]
         console.print(
             Panel.fit(
@@ -54,6 +56,30 @@ def show_command(
             )
         )
 
+        # Music
+        if video.music_track:
+            music = video.music_track
+            if video.music_artist:
+                music = f"{music} — {video.music_artist}"
+            console.print(f"[bold]music:[/bold] {music}")
+        else:
+            console.print("[dim]music: none[/dim]")
+
+        # Hashtags
+        if result.hashtags:
+            tags_str = "  ".join(f"#{h.tag}" for h in result.hashtags)
+            console.print(f"[bold]hashtags:[/bold] {tags_str}")
+        else:
+            console.print("[dim]hashtags: none[/dim]")
+
+        # Mentions
+        if result.mentions:
+            ment_str = "  ".join(f"@{m.handle}" for m in result.mentions)
+            console.print(f"[bold]mentions:[/bold] {ment_str}")
+        else:
+            console.print("[dim]mentions: none[/dim]")
+
+        # Transcript / frames / analysis
         if result.transcript is not None:
             t = result.transcript
             console.print(
@@ -75,15 +101,35 @@ def show_command(
         else:
             console.print("[dim]analysis: none yet[/dim]")
 
+        # M008: on-screen text (frame_texts)
+        _render_frame_texts(result)
+
+        # M008: thumbnail + content_shape
+        thumb = result.thumbnail_key or "none"
+        console.print(f"[bold]thumbnail:[/bold] {thumb}")
+        shape = result.content_shape or "unknown"
+        console.print(f"[bold]content_shape:[/bold] {shape}")
+
         _render_stats(result, video_id)
 
 
-def _render_stats(result: ShowVideoResult, video_id: int) -> None:
-    """D-05: display latest stats snapshot + computed velocity.
+def _render_frame_texts(result: ShowVideoResult) -> None:
+    """Render on-screen text section (M008)."""
+    if not result.frame_texts:
+        console.print("[dim]on-screen text: none[/dim]")
+        return
+    n = len(result.frame_texts)
+    console.print(f"[bold]on-screen text:[/bold] {n} block(s)")
+    preview = result.frame_texts[:_FRAME_TEXT_PREVIEW]
+    for ft in preview:
+        console.print(f"  - {ft.text}")
+    remaining = n - len(preview)
+    if remaining > 0:
+        console.print(f"  ...and {remaining} more")
 
-    If no stats row exists, print an actionable message pointing at
-    `vidscope refresh-stats <id>`. ASCII-only output (no Unicode glyphs).
-    """
+
+def _render_stats(result: ShowVideoResult, video_id: int) -> None:
+    """D-05: display latest stats snapshot + computed velocity."""
     if result.latest_stats is None:
         console.print(
             "[dim]Stats:[/dim] "

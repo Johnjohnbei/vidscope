@@ -17,9 +17,11 @@ from __future__ import annotations
 
 from vidscope.ports.clock import Clock
 from vidscope.ports.exporter import Exporter
+from vidscope.ports.ocr_engine import FaceCounter, OcrEngine, OcrLine
 from vidscope.ports.pipeline import (
     Analyzer,
     ChannelEntry,
+    CreatorInfo,
     Downloader,
     FrameExtractor,
     IngestOutcome,
@@ -35,7 +37,12 @@ from vidscope.ports.pipeline import (
 from vidscope.ports.repositories import (
     AnalysisRepository,
     CollectionRepository,
+    CreatorRepository,
     FrameRepository,
+    FrameTextRepository,
+    HashtagRepository,
+    LinkRepository,
+    MentionRepository,
     PipelineRunRepository,
     TagRepository,
     TranscriptRepository,
@@ -45,6 +52,7 @@ from vidscope.ports.repositories import (
     WatchAccountRepository,
     WatchRefreshRepository,
 )
+from vidscope.ports.link_extractor import LinkExtractor, RawLink
 from vidscope.ports.stats_probe import StatsProbe
 from vidscope.ports.storage import MediaStorage
 from vidscope.ports.taxonomy_catalog import TaxonomyCatalog
@@ -56,12 +64,23 @@ __all__ = [
     "ChannelEntry",
     "Clock",
     "CollectionRepository",
+    "CreatorInfo",
+    "CreatorRepository",
     "Downloader",
     "Exporter",
+    "FaceCounter",
     "FrameExtractor",
     "FrameRepository",
+    "FrameTextRepository",
+    "HashtagRepository",
     "IngestOutcome",
+    "LinkExtractor",
+    "LinkRepository",
+    "RawLink",
     "MediaStorage",
+    "MentionRepository",
+    "OcrEngine",
+    "OcrLine",
     "PipelineContext",
     "PipelineRunRepository",
     "ProbeResult",

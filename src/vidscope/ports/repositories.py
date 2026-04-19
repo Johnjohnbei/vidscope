@@ -32,10 +32,17 @@ from vidscope.domain import (
     Analysis,
     Collection,
     ContentType,
+    Creator,
+    CreatorId,
     Frame,
+    FrameText,
+    Hashtag,
+    Link,
+    Mention,
     PipelineRun,
     Platform,
     PlatformId,
+    PlatformUserId,
     RunStatus,
     StageName,
     Tag,
@@ -52,7 +59,12 @@ from vidscope.domain import (
 __all__ = [
     "AnalysisRepository",
     "CollectionRepository",
+    "CreatorRepository",
     "FrameRepository",
+    "FrameTextRepository",
+    "HashtagRepository",
+    "LinkRepository",
+    "MentionRepository",
     "PipelineRunRepository",
     "TagRepository",
     "TranscriptRepository",
@@ -535,4 +547,134 @@ class CollectionRepository(Protocol):
 
         Used by :class:`SearchVideosUseCase` in S03 for the collection facet.
         """
+        ...
+
+
+@runtime_checkable
+class CreatorRepository(Protocol):
+    """Persistence for :class:`Creator` rows (M006)."""
+
+    def upsert(self, creator: Creator) -> Creator:
+        """Insert or update the row matching ``(platform, platform_user_id)``."""
+        ...
+
+    def get(self, creator_id: CreatorId) -> Creator | None:
+        """Return the creator by primary key, or None."""
+        ...
+
+    def find_by_platform_user_id(
+        self, platform: Platform, platform_user_id: PlatformUserId
+    ) -> Creator | None:
+        """Return the creator matching ``(platform, platform_user_id)``, or None."""
+        ...
+
+    def find_by_handle(self, platform: Platform, handle: str) -> Creator | None:
+        """Return the first creator matching ``handle`` on ``platform``, or None."""
+        ...
+
+    def list_by_platform(
+        self, platform: Platform, *, limit: int = 1000
+    ) -> list[Creator]:
+        """Return creators for ``platform`` ordered by ``platform_user_id``."""
+        ...
+
+    def list_by_min_followers(
+        self, min_count: int, *, limit: int = 1000
+    ) -> list[Creator]:
+        """Return creators with ``follower_count >= min_count``, ordered desc."""
+        ...
+
+    def count(self) -> int:
+        """Return total number of creator rows."""
+        ...
+
+
+@runtime_checkable
+class HashtagRepository(Protocol):
+    """Persistence for :class:`Hashtag` rows (M007)."""
+
+    def replace_for_video(self, video_id: VideoId, tags: list[str]) -> None:
+        """Delete existing hashtags for ``video_id`` and insert ``tags``."""
+        ...
+
+    def list_for_video(self, video_id: VideoId) -> list[Hashtag]:
+        """Return hashtags for ``video_id`` ordered by tag ascending."""
+        ...
+
+    def find_video_ids_by_tag(self, tag: str, *, limit: int = 50) -> list[VideoId]:
+        """Return video_ids that have a hashtag matching ``tag`` (lowercased)."""
+        ...
+
+
+@runtime_checkable
+class MentionRepository(Protocol):
+    """Persistence for :class:`Mention` rows (M007)."""
+
+    def replace_for_video(
+        self, video_id: VideoId, mentions: list[Mention]
+    ) -> None:
+        """Delete existing mentions for ``video_id`` and insert ``mentions``."""
+        ...
+
+    def list_for_video(self, video_id: VideoId) -> list[Mention]:
+        """Return mentions for ``video_id``."""
+        ...
+
+    def find_video_ids_by_handle(
+        self, handle: str, *, limit: int = 50
+    ) -> list[VideoId]:
+        """Return video_ids that mention ``handle`` (lowercased, no @)."""
+        ...
+
+
+@runtime_checkable
+class LinkRepository(Protocol):
+    """Persistence for :class:`Link` rows (M007)."""
+
+    def add_many_for_video(
+        self, video_id: VideoId, links: list[Link]
+    ) -> list[Link]:
+        """Insert links for ``video_id`` and return them with ids populated."""
+        ...
+
+    def list_for_video(
+        self, video_id: VideoId, *, source: str | None = None
+    ) -> list[Link]:
+        """Return links for ``video_id``, optionally filtered by ``source``."""
+        ...
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        """Return True if at least one link exists for ``video_id``."""
+        ...
+
+    def find_video_ids_with_any_link(self, *, limit: int = 50) -> list[VideoId]:
+        """Return video_ids that have at least one link, ordered by recency."""
+        ...
+
+
+@runtime_checkable
+class FrameTextRepository(Protocol):
+    """Persistence for :class:`FrameText` rows (M008)."""
+
+    def add_many_for_frame(
+        self,
+        frame_id: int,
+        video_id: VideoId,
+        texts: list[FrameText],
+    ) -> list[FrameText]:
+        """Insert frame_texts rows and return them with ids populated."""
+        ...
+
+    def list_for_video(self, video_id: VideoId) -> list[FrameText]:
+        """Return all frame texts for ``video_id``."""
+        ...
+
+    def has_any_for_video(self, video_id: VideoId) -> bool:
+        """Return True if at least one frame text exists for ``video_id``."""
+        ...
+
+    def find_video_ids_by_text(
+        self, query: str, *, limit: int = 50
+    ) -> list[VideoId]:
+        """Return video_ids whose frame texts contain ``query`` (FTS5)."""
         ...

@@ -1,0 +1,99 @@
+# Vocabulaire Whisper — termes injectés dans l'initial_prompt pour améliorer la transcription.
+#
+# Ajoutez des termes ici sans modifier le code. Le fichier est relu à chaque démarrage.
+# La bibliothèque DB (titres, hashtags, créateurs) est fusionnée automatiquement au runtime.
+#
+# Règles :
+#   - Un terme par ligne
+#   - La casse est préservée (Whisper est sensible à la casse dans l'initial_prompt)
+#   - Budget total : ~900 caractères. Les termes YAML sont prioritaires sur les termes DB.
+#   - Ajoutez une section si vous traitez un nouveau domaine ou une nouvelle langue.
+
+brands:
+  - Claude Code
+  - Claude Sonnet
+  - Claude Opus
+  - Claude Haiku
+  - Anthropic
+  - ChatGPT
+  - OpenAI
+  - Gemini
+  - Mistral
+  - Perplexity
+  - Midjourney
+  - Stable Diffusion
+  - Copilot
+  - Cursor
+  - Windsurf
+
+ai:
+  - LLM
+  - RAG
+  - fine-tuning
+  - fine-tune
+  - embeddings
+  - transformer
+  - tokenizer
+  - inference
+  - context window
+  - prompt engineering
+  - system prompt
+  - multimodal
+  - agentic
+  - MCP
+
+tech:
+  - API
+  - CLI
+  - SDK
+  - REST
+  - GraphQL
+  - WebSocket
+  - npm
+  - pip
+  - uv
+  - Docker
+  - Kubernetes
+  - GitHub
+  - GitLab
+  - CI/CD
+  - TypeScript
+  - JavaScript
+  - Python
+  - Rust
+  - Go
+  - Next.js
+  - React
+  - Tailwind
+  - Vite
+  - FastAPI
+
+fr:
+  - intelligence artificielle
+  - modèle de langage
+  - apprentissage automatique
+  - réseau de neurones
+  - développeur
+  - développeuse
+  - programmation
+  - logiciel
+  - tutoriel
+  - démo
+  - déploiement
+  - infrastructure
+  - refactoring
+  - bonnes pratiques
+
+en:
+  - software engineer
+  - machine learning
+  - deep learning
+  - neural network
+  - open source
+  - developer
+  - tutorial
+  - walkthrough
+  - deployment
+  - best practices
+  - code review
+  - pull request

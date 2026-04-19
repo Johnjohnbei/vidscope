@@ -23,9 +23,11 @@ from datetime import datetime, timedelta
 
 from vidscope.domain.values import (
     ContentType,
+    CreatorId,
     Language,
     Platform,
     PlatformId,
+    PlatformUserId,
     RunStatus,
     SentimentLabel,
     StageName,
@@ -36,7 +38,12 @@ from vidscope.domain.values import (
 __all__ = [
     "Analysis",
     "Collection",
+    "Creator",
     "Frame",
+    "FrameText",
+    "Hashtag",
+    "Link",
+    "Mention",
     "PipelineRun",
     "Tag",
     "Transcript",
@@ -70,6 +77,14 @@ class Video:
     upload_date: str | None = None
     view_count: int | None = None
     media_key: str | None = None
+    creator_id: "CreatorId | None" = None
+    music_track: str | None = None
+    music_artist: str | None = None
+    description: str | None = None
+    thumbnail_key: str | None = None
+    content_shape: str | None = None
+    hashtags: tuple[str, ...] = ()
+    mentions: tuple[str, ...] = ()
     created_at: datetime | None = None
 
     def is_ingested(self) -> bool:
@@ -316,5 +331,105 @@ class Collection:
     """
 
     name: str
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Creator:
+    """A content creator identified by a platform-scoped user id (M006).
+
+    ``platform_user_id`` is the stable, platform-assigned identifier
+    (YouTube ``UC_...``, TikTok numeric id, Instagram user id).
+    ``handle`` and ``display_name`` come from yt-dlp's ``uploader``
+    field — they can change over time and are refreshed on every ingest.
+    ``is_orphan=True`` means the creator row was synthesised from a
+    video's ``author`` field without a verified platform user id.
+    """
+
+    platform: Platform
+    platform_user_id: PlatformUserId
+    id: CreatorId | None = None
+    handle: str | None = None
+    display_name: str | None = None
+    profile_url: str | None = None
+    avatar_url: str | None = None
+    follower_count: int | None = None
+    is_verified: bool | None = None
+    is_orphan: bool = False
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FrameText:
+    """One OCR-extracted text line from a video frame (M008).
+
+    ``confidence`` is the engine's score in ``[0.0, 1.0]``.
+    ``bbox`` is an opaque JSON string of the 4 corner points or ``None``
+    when the engine does not expose bounding boxes.
+    ``video_id`` is ``None`` until persisted; ``id`` is ``None`` until
+    the repository assigns it.
+    """
+
+    video_id: VideoId
+    frame_id: int
+    text: str
+    confidence: float
+    bbox: str | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Hashtag:
+    """A hashtag extracted from a video's metadata tags (M007).
+
+    ``tag`` is stored in canonical form (lowercase, no leading ``#``)
+    by the repository. Uniqueness enforced at ``(video_id, tag)`` level
+    by ``HashtagRepository.replace_for_video``.
+    """
+
+    video_id: VideoId
+    tag: str
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Link:
+    """A URL extracted from a video's description or transcript (M007).
+
+    ``normalized_url`` is the canonical form used for deduplication.
+    ``source`` identifies where the link came from (``"description"`` or
+    ``"transcript"``). ``position_ms`` is the timestamp in the
+    transcript where the link appeared, or ``None`` for description links.
+    """
+
+    video_id: VideoId
+    url: str
+    normalized_url: str
+    source: str
+    position_ms: int | None = None
+    id: int | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Mention:
+    """A @handle mention extracted from a video's description (M007).
+
+    ``handle`` is lowercase-stripped (no leading ``@``).
+    ``platform`` is ``None`` when the mention's platform cannot be
+    inferred from context — the repository fills it in later via
+    creator resolution.
+    ``video_id=VideoId(0)`` is used as a placeholder before the video
+    row exists (e.g. in the downloader extraction helpers).
+    """
+
+    video_id: VideoId
+    handle: str
+    platform: Platform | None = None
     id: int | None = None
     created_at: datetime | None = None

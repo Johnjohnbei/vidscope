@@ -4,7 +4,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vidscope.domain import Analysis, Frame, Transcript, Video, VideoId, VideoStats
+from vidscope.domain import (
+    Analysis,
+    Creator,
+    Frame,
+    FrameText,
+    Hashtag,
+    Link,
+    Mention,
+    Transcript,
+    Video,
+    VideoId,
+    VideoStats,
+)
 from vidscope.domain.metrics import views_velocity_24h as _compute_velocity
 from vidscope.ports import UnitOfWorkFactory
 
@@ -13,27 +25,22 @@ __all__ = ["ShowVideoResult", "ShowVideoUseCase"]
 
 @dataclass(frozen=True, slots=True)
 class ShowVideoResult:
-    """Everything known about a single video.
-
-    ``found`` is ``False`` when no video matches the given id; the
-    other fields are then empty/None.
-
-    D-05 fields (M009/S04):
-    - ``latest_stats``: the most recent VideoStats snapshot, or None if
-      no stats have been captured yet.
-    - ``views_velocity_24h``: computed via metrics.views_velocity_24h on
-      the full history if >= 2 snapshots exist, otherwise None.
-    """
+    """Everything known about a single video."""
 
     found: bool
     video: Video | None = None
     transcript: Transcript | None = None
     frames: tuple[Frame, ...] = ()
     analysis: Analysis | None = None
-
-    # D-05: Latest captured stats snapshot + computed velocity over full history.
     latest_stats: VideoStats | None = None
     views_velocity_24h: float | None = None
+    creator: Creator | None = None
+    hashtags: tuple[Hashtag, ...] = ()
+    mentions: tuple[Mention, ...] = ()
+    links: tuple[Link, ...] = ()
+    frame_texts: tuple[FrameText, ...] = ()
+    thumbnail_key: str | None = None
+    content_shape: str | None = None
 
 
 class ShowVideoUseCase:
@@ -43,29 +50,33 @@ class ShowVideoUseCase:
         self._uow_factory = unit_of_work_factory
 
     def execute(self, video_id: int) -> ShowVideoResult:
-        """Fetch the full domain record for ``video_id`` in one transaction.
-
-        Joins video metadata + transcript + frames + latest analysis
-        into a single :class:`ShowVideoResult`. Returns ``found=False``
-        when no video matches the id — never raises on missing rows.
-
-        D-05 (M009/S04): also loads the latest stats snapshot and
-        computes views_velocity_24h from the full history when >= 2
-        snapshots are available.
-        """
+        """Fetch the full domain record for ``video_id`` in one transaction."""
         with self._uow_factory() as uow:
             video = uow.videos.get(VideoId(video_id))
             if video is None:
                 return ShowVideoResult(found=False)
-            transcript = uow.transcripts.get_for_video(video.id)  # type: ignore[arg-type]
-            frames = tuple(uow.frames.list_for_video(video.id))  # type: ignore[arg-type]
-            analysis = uow.analyses.get_latest_for_video(video.id)  # type: ignore[arg-type]
+            vid_id: VideoId = video.id  # type: ignore[assignment]
+            transcript = uow.transcripts.get_for_video(vid_id)
+            frames = tuple(uow.frames.list_for_video(vid_id))
+            analysis = uow.analyses.get_latest_for_video(vid_id)
 
-            # D-05: latest stats snapshot + full-history velocity
-            vid_id = video.id  # type: ignore[assignment]
-            latest_stats = uow.video_stats.latest_for_video(vid_id)
-            history = uow.video_stats.list_for_video(vid_id, limit=1000)
-            velocity = _compute_velocity(history) if len(history) >= 2 else None
+            # video_stats is optional (not all UoW implementations expose it)
+            video_stats_repo = getattr(uow, "video_stats", None)
+            latest_stats: VideoStats | None = None
+            velocity: float | None = None
+            if video_stats_repo is not None:
+                latest_stats = video_stats_repo.latest_for_video(vid_id)
+                history = video_stats_repo.list_for_video(vid_id, limit=1000)
+                velocity = _compute_velocity(history) if len(history) >= 2 else None
+
+            creator: Creator | None = None
+            if video.creator_id is not None:
+                creator = uow.creators.get(video.creator_id)
+
+            hashtags = tuple(uow.hashtags.list_for_video(vid_id))
+            mentions = tuple(uow.mentions.list_for_video(vid_id))
+            links = tuple(uow.links.list_for_video(vid_id))
+            frame_texts = tuple(uow.frame_texts.list_for_video(vid_id))
 
         return ShowVideoResult(
             found=True,
@@ -75,4 +86,11 @@ class ShowVideoUseCase:
             analysis=analysis,
             latest_stats=latest_stats,
             views_velocity_24h=velocity,
+            creator=creator,
+            hashtags=hashtags,
+            mentions=mentions,
+            links=links,
+            frame_texts=frame_texts,
+            thumbnail_key=video.thumbnail_key,
+            content_shape=video.content_shape,
         )

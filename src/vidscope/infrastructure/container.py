@@ -43,7 +43,7 @@ from pathlib import Path
 
 from sqlalchemy import Engine
 
-from vidscope.adapters.config import YamlTaxonomy
+from vidscope.adapters.config import YamlTaxonomy, YamlVocabularySource
 from vidscope.adapters.ffmpeg import FfmpegFrameExtractor
 from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
@@ -201,9 +201,17 @@ def build_container(config: Config | None = None) -> Container:
     # transcribe call (S03/D026), so this constructor never triggers
     # a model download. The first `vidscope add` invocation pays
     # the ~150MB cost; subsequent calls reuse the cached model.
+    # Vocabulary: YAML seeds + termes DB (titres, hashtags, créateurs).
+    # Buildé une fois au démarrage — dynamique vis-à-vis des runs précédents.
+    _vocab_path = Path("config") / "vocabulary.yaml"
+    if not _vocab_path.is_absolute():
+        _vocab_path = Path.cwd() / _vocab_path
+    _vocab_prompt = YamlVocabularySource(_vocab_path, engine=engine).build_prompt()
+
     transcriber = FasterWhisperTranscriber(
         model_name=resolved_config.whisper_model,
         models_dir=resolved_config.models_dir,
+        initial_prompt=_vocab_prompt,
     )
 
     # FfmpegFrameExtractor checks for the ffmpeg binary lazily at

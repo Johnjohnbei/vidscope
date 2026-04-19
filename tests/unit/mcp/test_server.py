@@ -129,7 +129,7 @@ class TestBuildMcpServer:
     def test_server_registers_seven_tools(
         self, sandboxed_container: Container
     ) -> None:
-        """After M009/S04, the server exposes 7 tools (trending added)."""
+        """Server exposes 9 tools (get_creator + get_frame_texts added in M006/M008)."""
         server = build_mcp_server(sandboxed_container)
         tools = asyncio.run(server.list_tools())
         names = {tool.name for tool in tools}
@@ -141,6 +141,8 @@ class TestBuildMcpServer:
             "vidscope_get_status",
             "vidscope_suggest_related",
             "vidscope_trending",
+            "vidscope_get_creator",
+            "vidscope_get_frame_texts",
         }
 
     def test_tool_names_appear_in_tool_schemas(

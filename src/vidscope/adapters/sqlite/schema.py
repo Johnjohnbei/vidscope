@@ -57,8 +57,13 @@ __all__ = [
     "analyses",
     "collection_items",
     "collections",
+    "creators",
+    "frame_texts",
     "frames",
+    "hashtags",
     "init_db",
+    "links",
+    "mentions",
     "metadata",
     "pipeline_runs",
     "tag_assignments",
@@ -97,6 +102,7 @@ videos = Table(
     Column("upload_date", String(32), nullable=True),
     Column("view_count", Integer, nullable=True),
     Column("media_key", Text, nullable=True),
+    Column("creator_id", Integer, ForeignKey("creators.id"), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
 )
 
@@ -316,6 +322,74 @@ collection_items = Table(
 )
 
 
+# M006: creator entities (one row per platform user id).
+creators = Table(
+    "creators",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("platform", String(32), nullable=False),
+    Column("platform_user_id", String(255), nullable=False),
+    Column("handle", String(255), nullable=True),
+    Column("display_name", String(255), nullable=True),
+    Column("profile_url", Text, nullable=True),
+    Column("avatar_url", Text, nullable=True),
+    Column("follower_count", Integer, nullable=True),
+    Column("is_verified", Boolean, nullable=True),
+    Column("is_orphan", Boolean, nullable=False, default=False),
+    Column("first_seen_at", DateTime(timezone=True), nullable=True),
+    Column("last_seen_at", DateTime(timezone=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+    UniqueConstraint("platform", "platform_user_id", name="uq_creators_platform_user_id"),
+)
+
+# M008: OCR-extracted text from frames.
+frame_texts = Table(
+    "frame_texts",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("video_id", Integer, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False),
+    Column("frame_id", Integer, ForeignKey("frames.id", ondelete="CASCADE"), nullable=False),
+    Column("text", Text, nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("bbox", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+)
+
+# M007: hashtags extracted from video metadata tags.
+hashtags = Table(
+    "hashtags",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("video_id", Integer, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False),
+    Column("tag", String(128), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+)
+
+# M007: URLs extracted from video descriptions / transcripts.
+links = Table(
+    "links",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("video_id", Integer, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False),
+    Column("url", Text, nullable=False),
+    Column("normalized_url", Text, nullable=False),
+    Column("source", String(64), nullable=False),
+    Column("position_ms", Integer, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+)
+
+# M007: @handle mentions extracted from video descriptions.
+mentions = Table(
+    "mentions",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("video_id", Integer, ForeignKey("videos.id", ondelete="CASCADE"), nullable=False),
+    Column("handle", String(255), nullable=False),
+    Column("platform", String(32), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
+)
+
+
 # ---------------------------------------------------------------------------
 # FTS5 virtual table DDL
 # ---------------------------------------------------------------------------
@@ -360,11 +434,17 @@ def init_db(engine: Engine) -> None:
         _ensure_analysis_v2_columns(conn)
         _ensure_video_tracking_table(conn)  # M011/S01
         _ensure_tags_collections_tables(conn)  # M011/S02
+        _ensure_m006_m007_m008_tables(conn)  # M006/M007/M008
 
 
 def _create_fts5(conn: Connection) -> None:
     """Execute the FTS5 virtual-table DDL on an existing connection."""
     conn.execute(text(_FTS5_CREATE_SQL))
+    conn.execute(text(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS frame_texts_fts USING fts5("
+        "frame_text_id UNINDEXED, video_id UNINDEXED, text,"
+        " tokenize = 'unicode61 remove_diacritics 2')"
+    ))
 
 
 def _ensure_video_stats_table(conn: Connection) -> None:
@@ -638,6 +718,96 @@ def _ensure_tags_collections_tables(conn: Connection) -> None:
             "ON collection_items (video_id)"
         )
     )
+
+
+def _ensure_m006_m007_m008_tables(conn: Connection) -> None:
+    """M006/M007/M008 migration: create creators, frame_texts, hashtags,
+    links, mentions if absent. Also adds creator_id to videos. Idempotent."""
+    existing = {
+        row[0]
+        for row in conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        )
+    }
+    if "creators" not in existing:
+        conn.execute(text("""
+            CREATE TABLE creators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform VARCHAR(32) NOT NULL,
+                platform_user_id VARCHAR(255) NOT NULL,
+                handle VARCHAR(255),
+                display_name VARCHAR(255),
+                profile_url TEXT,
+                avatar_url TEXT,
+                follower_count INTEGER,
+                is_verified BOOLEAN,
+                is_orphan BOOLEAN NOT NULL DEFAULT 0,
+                first_seen_at DATETIME,
+                last_seen_at DATETIME,
+                created_at DATETIME NOT NULL,
+                CONSTRAINT uq_creators_platform_user_id UNIQUE (platform, platform_user_id)
+            )"""))
+    if "frame_texts" not in existing:
+        conn.execute(text("""
+            CREATE TABLE frame_texts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                frame_id INTEGER NOT NULL REFERENCES frames(id) ON DELETE CASCADE,
+                text TEXT NOT NULL,
+                confidence FLOAT NOT NULL,
+                bbox TEXT,
+                created_at DATETIME NOT NULL
+            )"""))
+    if "hashtags" not in existing:
+        conn.execute(text("""
+            CREATE TABLE hashtags (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                tag VARCHAR(128) NOT NULL,
+                created_at DATETIME NOT NULL
+            )"""))
+    if "links" not in existing:
+        conn.execute(text("""
+            CREATE TABLE links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                url TEXT NOT NULL,
+                normalized_url TEXT NOT NULL,
+                source VARCHAR(64) NOT NULL,
+                position_ms INTEGER,
+                created_at DATETIME NOT NULL
+            )"""))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_links_video_id ON links (video_id)"
+        ))
+    if "mentions" not in existing:
+        conn.execute(text("""
+            CREATE TABLE mentions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+                handle VARCHAR(255) NOT NULL,
+                platform VARCHAR(32),
+                created_at DATETIME NOT NULL
+            )"""))
+
+    # Additive migration: creator_id FK on videos (added in M006).
+    video_cols = {
+        row[1]
+        for row in conn.execute(text("PRAGMA table_info(videos)"))
+    }
+    if "creator_id" not in video_cols:
+        conn.execute(
+            text(
+                "ALTER TABLE videos ADD COLUMN creator_id INTEGER "
+                "REFERENCES creators(id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_videos_creator_id "
+                "ON videos (creator_id)"
+            )
+        )
 
 
 # Re-export a type alias used by tests that want to introspect row maps

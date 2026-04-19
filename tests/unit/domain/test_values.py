@@ -39,7 +39,9 @@ class TestStageName:
             StageName.FRAMES,
             StageName.ANALYZE,
             StageName.INDEX,
-            StageName.STATS,  # M009: standalone stats-probe stage
+            StageName.STATS,
+            StageName.METADATA_EXTRACT,
+            StageName.VISUAL_INTELLIGENCE,
         ]
 
     def test_string_values_match_names_lowercased(self) -> None:

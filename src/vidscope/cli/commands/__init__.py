@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from vidscope.cli.commands.add import add_command
 from vidscope.cli.commands.collections import collection_app
+from vidscope.cli.commands.creators import creator_app
+from vidscope.cli.commands.links import links_command
 from vidscope.cli.commands.cookies import cookies_app
 from vidscope.cli.commands.doctor import doctor_command
 from vidscope.cli.commands.explain import explain_command
@@ -23,6 +25,8 @@ from vidscope.cli.commands.watch import watch_app
 __all__ = [
     "add_command",
     "collection_app",
+    "creator_app",
+    "links_command",
     "cookies_app",
     "doctor_command",
     "explain_command",

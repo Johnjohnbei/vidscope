@@ -37,6 +37,7 @@ __all__ = [
     "check_cookies",
     "check_ffmpeg",
     "check_mcp_sdk",
+    "check_vision",
     "check_ytdlp",
     "run_all_checks",
 ]
@@ -371,6 +372,35 @@ def check_analyzer() -> CheckResult:
     )
 
 
+def check_vision() -> CheckResult:
+    """Return a :class:`CheckResult` for the optional vision libraries.
+
+    Vision features (M008) require both ``rapidocr_onnxruntime`` and
+    ``cv2`` (opencv-python-headless). Both missing = ok (optional feature).
+    One present, one missing = not ok (partial install).
+    """
+    import importlib.util  # noqa: PLC0415
+
+    has_rapidocr = importlib.util.find_spec("rapidocr_onnxruntime") is not None
+    has_cv2 = importlib.util.find_spec("cv2") is not None
+
+    if has_rapidocr and has_cv2:
+        return CheckResult(name="vision", ok=True, version_or_error="rapidocr + cv2 present", remediation="")
+    if not has_rapidocr and not has_cv2:
+        return CheckResult(
+            name="vision", ok=True,
+            version_or_error="rapidocr-onnxruntime and opencv-python-headless not installed (optional)",
+            remediation="",
+        )
+    missing = "opencv-python-headless" if has_rapidocr else "rapidocr-onnxruntime"
+    present = "rapidocr_onnxruntime" if has_rapidocr else "cv2"
+    return CheckResult(
+        name="vision", ok=False,
+        version_or_error=f"partial install: {present} present but {missing} missing",
+        remediation=f"Install the missing package: `uv add {missing}`",
+    )
+
+
 def run_all_checks() -> list[CheckResult]:
     """Run every startup check and return the results.
 
@@ -383,4 +413,5 @@ def run_all_checks() -> list[CheckResult]:
         check_mcp_sdk(),
         check_cookies(),
         check_analyzer(),
+        check_vision(),
     ]

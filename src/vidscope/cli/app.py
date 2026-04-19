@@ -20,9 +20,11 @@ from vidscope.cli.commands import (
     add_command,
     collection_app,
     cookies_app,
+    creator_app,
     doctor_command,
     explain_command,
     export_command,
+    links_command,
     list_command,
     mcp_app,
     refresh_stats_command,
@@ -120,6 +122,11 @@ app.command(
 )(review_command)
 app.add_typer(tag_app, name="tag")
 app.add_typer(collection_app, name="collection")
+app.add_typer(creator_app, name="creator")
+app.command(
+    "links",
+    help="List every URL extracted from a video's description + transcript.",
+)(links_command)
 app.command(
     "export",
     help="Export the library to JSON / Markdown / CSV.",

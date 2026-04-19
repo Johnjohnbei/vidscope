@@ -8,5 +8,6 @@ from every other adapter category. Governed by the
 from __future__ import annotations
 
 from vidscope.adapters.config.yaml_taxonomy import YamlTaxonomy
+from vidscope.adapters.config.yaml_vocabulary import YamlVocabularySource
 
-__all__ = ["YamlTaxonomy"]
+__all__ = ["YamlTaxonomy", "YamlVocabularySource"]

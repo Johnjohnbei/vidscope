@@ -51,6 +51,7 @@ from vidscope.application import (
     ShowVideoUseCase,
     SuggestRelatedUseCase,
 )
+from vidscope.application.get_creator import GetCreatorUseCase
 from vidscope.domain import DomainError, Platform, Video, VideoId
 from vidscope.infrastructure.container import Container
 
@@ -406,6 +407,85 @@ def build_mcp_server(container: Container) -> FastMCP:
             }
             for e in results
         ]
+
+    @mcp.tool()
+    def vidscope_get_creator(
+        handle: str,
+        platform: str = "youtube",
+    ) -> dict[str, Any]:
+        """Return the full profile for a creator identified by handle.
+
+        Args:
+            handle: Creator handle (e.g. @alice).
+            platform: Platform slug — youtube (default), tiktok, or instagram.
+
+        Returns:
+            Dict with found=True and creator dict, or found=False and handle.
+        """
+        try:
+            plat = Platform(platform.strip().lower())
+        except ValueError:
+            raise ValueError(f"unknown platform: {platform!r}") from None
+
+        use_case = GetCreatorUseCase(unit_of_work_factory=container.unit_of_work)
+        result = use_case.execute(plat, handle)
+
+        if not result.found or result.creator is None:
+            return {"found": False, "handle": handle}
+
+        c = result.creator
+        return {
+            "found": True,
+            "creator": {
+                "id": int(c.id) if c.id is not None else None,
+                "platform": c.platform.value,
+                "platform_user_id": str(c.platform_user_id),
+                "handle": c.handle,
+                "display_name": c.display_name,
+                "profile_url": c.profile_url,
+                "avatar_url": c.avatar_url,
+                "follower_count": c.follower_count,
+                "is_verified": c.is_verified,
+                "first_seen_at": c.first_seen_at.isoformat() if c.first_seen_at else None,
+                "last_seen_at": c.last_seen_at.isoformat() if c.last_seen_at else None,
+            },
+        }
+
+    @mcp.tool()
+    def vidscope_get_frame_texts(video_id: int) -> dict[str, Any]:
+        """Return OCR-extracted on-screen text for a video.
+
+        Args:
+            video_id: Numeric video id.
+
+        Returns:
+            Dict with found, video_id, and frame_texts list (text, confidence,
+            frame_id, timestamp_ms).
+        """
+        with container.unit_of_work() as uow:
+            video = uow.videos.get(VideoId(video_id))
+            if video is None:
+                return {"found": False, "video_id": video_id, "frame_texts": []}
+
+            frame_texts = uow.frame_texts.list_for_video(VideoId(video_id))
+            frames = uow.frames.list_for_video(VideoId(video_id))
+
+            frame_ts: dict[int, int | None] = {
+                int(f.id): f.timestamp_ms for f in frames if f.id is not None
+            }
+            return {
+                "found": True,
+                "video_id": video_id,
+                "frame_texts": [
+                    {
+                        "frame_id": int(ft.frame_id) if ft.frame_id is not None else None,
+                        "text": ft.text,
+                        "confidence": float(ft.confidence),
+                        "timestamp_ms": frame_ts.get(int(ft.frame_id)) if ft.frame_id is not None else None,
+                    }
+                    for ft in frame_texts
+                ],
+            }
 
     # The closures above reference the use cases by name so mypy can
     # verify they exist. Silence the unused-type warning for VideoId

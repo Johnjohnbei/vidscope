@@ -26,9 +26,11 @@ from typing import NewType
 __all__ = [
     "CollectionName",
     "ContentType",
+    "CreatorId",
     "Language",
     "Platform",
     "PlatformId",
+    "PlatformUserId",
     "RunStatus",
     "SentimentLabel",
     "StageName",
@@ -45,6 +47,13 @@ PlatformId = NewType("PlatformId", str)
 """Platform-assigned stable identifier (e.g. YouTube video id, TikTok aweme
 id). Combined with :class:`Platform` it is globally unique across sources."""
 
+CreatorId = NewType("CreatorId", int)
+"""Database-assigned primary key for a :class:`Creator`."""
+
+PlatformUserId = NewType("PlatformUserId", str)
+"""Platform-assigned stable user identifier (e.g. YouTube channel id ``UC_...``,
+TikTok numeric id). Combined with :class:`Platform` it is globally unique."""
+
 TagName = NewType("TagName", str)
 """Lowercase, stripped tag name. Normalisation enforced by the
 TagRepository.get_or_create. Using NewType keeps the value distinct
@@ -54,6 +63,18 @@ CollectionName = NewType("CollectionName", str)
 """User-facing collection name. Case-preserved (D3 M011 RESEARCH) —
 unlike TagName, the DB stores "Concurrents" and "concurrents" as
 distinct rows."""
+
+
+class ContentShape(StrEnum):
+    """Visual composition of a video based on face-count analysis (M008/R049).
+
+    Assigned by :func:`~vidscope.pipeline.stages.visual_intelligence.classify_content_shape`.
+    """
+
+    UNKNOWN = "unknown"
+    BROLL = "broll"
+    TALKING_HEAD = "talking_head"
+    MIXED = "mixed"
 
 
 class ContentType(StrEnum):
@@ -148,6 +169,8 @@ class StageName(StrEnum):
     ANALYZE = "analyze"
     INDEX = "index"
     STATS = "stats"
+    METADATA_EXTRACT = "metadata_extract"
+    VISUAL_INTELLIGENCE = "visual_intelligence"
 
 
 class RunStatus(StrEnum):

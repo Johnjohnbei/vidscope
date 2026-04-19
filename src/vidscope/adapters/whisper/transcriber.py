@@ -87,11 +87,13 @@ class FasterWhisperTranscriber:
         models_dir: Path,
         device: str = "cpu",
         compute_type: str = "int8",
+        initial_prompt: str | None = None,
     ) -> None:
         self._model_name = model_name
         self._models_dir = models_dir
         self._device = device
         self._compute_type = compute_type
+        self._initial_prompt = initial_prompt
         self._model: WhisperModel | None = None
 
     @property
@@ -133,6 +135,7 @@ class FasterWhisperTranscriber:
                 media_path,
                 vad_filter=False,
                 beam_size=5,
+                initial_prompt=self._initial_prompt,
             )
             # faster-whisper returns a generator — drain it eagerly
             # so any underlying decode error surfaces here, not later.

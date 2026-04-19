@@ -15,7 +15,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 
 from vidscope.adapters.sqlite.schema import videos as videos_table
-from vidscope.domain import Platform, PlatformId, Video, VideoId
+from vidscope.domain import CreatorId, Platform, PlatformId, Video, VideoId
 from vidscope.domain.errors import StorageError
 
 __all__ = ["VideoRepositorySQLite"]
@@ -50,7 +50,7 @@ class VideoRepositorySQLite:
             )
         return self.get(VideoId(int(inserted_id[0]))) or video
 
-    def upsert_by_platform_id(self, video: Video) -> Video:
+    def upsert_by_platform_id(self, video: Video, creator: "Any" = None) -> Video:
         """Insert or update the row matching ``(platform, platform_id)``.
 
         Uses SQLite's ``INSERT ... ON CONFLICT(platform_id) DO UPDATE``
@@ -58,6 +58,9 @@ class VideoRepositorySQLite:
         ``created_at`` is preserved on update.
         """
         payload = _video_to_row(video)
+        # If a creator entity is provided and has an id, bind it now.
+        if creator is not None and hasattr(creator, "id") and creator.id is not None:
+            payload["creator_id"] = int(creator.id)
         stmt = sqlite_insert(videos_table).values(**payload)
         # On conflict, update every field except id and created_at.
         update_map = {
@@ -144,6 +147,31 @@ class VideoRepositorySQLite:
         )
         return [_row_to_video(row) for row in rows]
 
+    def list_by_creator(
+        self, creator_id: CreatorId, *, limit: int = 1000
+    ) -> list[Video]:
+        """Return videos whose ``creator_id`` matches."""
+        rows = (
+            self._conn.execute(
+                select(videos_table)
+                .where(videos_table.c.creator_id == int(creator_id))
+                .order_by(videos_table.c.created_at.desc())
+                .limit(limit)
+            )
+            .mappings()
+            .all()
+        )
+        return [_row_to_video(row) for row in rows]
+
+    def count_by_creator(self, creator_id: CreatorId) -> int:
+        """Return count of videos for ``creator_id``."""
+        total = self._conn.execute(
+            select(func.count()).select_from(videos_table).where(
+                videos_table.c.creator_id == int(creator_id)
+            )
+        ).scalar()
+        return int(total or 0)
+
     def count(self) -> int:
         total = self._conn.execute(
             select(func.count()).select_from(videos_table)
@@ -177,6 +205,7 @@ def _video_to_row(video: Video) -> dict[str, Any]:
 def _row_to_video(row: Any) -> Video:
     """Translate a SQLAlchemy row mapping to a domain :class:`Video`."""
     data = cast("dict[str, Any]", dict(row))
+    raw_creator_id = data.get("creator_id")
     return Video(
         id=VideoId(int(data["id"])),
         platform=Platform(data["platform"]),
@@ -188,6 +217,7 @@ def _row_to_video(row: Any) -> Video:
         upload_date=data.get("upload_date"),
         view_count=data.get("view_count"),
         media_key=data.get("media_key"),
+        creator_id=CreatorId(int(raw_creator_id)) if raw_creator_id is not None else None,
         created_at=_ensure_utc(data.get("created_at")),
     )
 

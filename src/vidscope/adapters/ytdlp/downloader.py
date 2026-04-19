@@ -43,8 +43,10 @@ from typing import Any, Final
 import yt_dlp
 from yt_dlp.utils import DownloadError, ExtractorError
 
-from vidscope.domain import CookieAuthError, IngestError, Platform, PlatformId
-from vidscope.ports import ChannelEntry, IngestOutcome, ProbeResult, ProbeStatus
+import re
+
+from vidscope.domain import CookieAuthError, IngestError, Mention, Platform, PlatformId, VideoId
+from vidscope.ports import ChannelEntry, CreatorInfo, IngestOutcome, ProbeResult, ProbeStatus
 
 __all__ = ["YtdlpDownloader"]
 
@@ -307,11 +309,22 @@ class YtdlpDownloader:
             )
 
         title = info.get("title") if isinstance(info, dict) else None
+        info_d: dict[str, Any] = info if isinstance(info, dict) else {}
         return ProbeResult(
             status=ProbeStatus.OK,
             url=url,
-            detail=f"resolved: {title or info.get('id', '?')}",
+            detail=f"resolved: {title or info_d.get('id', '?')}",
             title=title if isinstance(title, str) else None,
+            uploader=_str_or_none(info_d.get("uploader")),
+            uploader_id=_str_or_none(info_d.get("uploader_id")),
+            uploader_url=_str_or_none(info_d.get("uploader_url")),
+            channel_follower_count=_int_or_none(
+                info_d.get("channel_follower_count") or info_d.get("channel_followers")
+            ),
+            uploader_thumbnail=_resolve_thumbnail(info_d.get("uploader_thumbnail")),
+            uploader_verified=_bool_or_none(
+                info_d.get("channel_verified") or info_d.get("uploader_verified")
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -393,6 +406,12 @@ def _info_to_outcome(
         duration=_float_or_none(info.get("duration")),
         upload_date=_str_or_none(info.get("upload_date")),
         view_count=_int_or_none(info.get("view_count")),
+        creator_info=_build_creator_info(info),
+        description=_str_or_none(info.get("description")),
+        hashtags=_extract_hashtags(info),
+        mentions=_extract_mentions(info.get("description"), platform),
+        music_track=_str_or_none(info.get("track")),
+        music_artist=_extract_music_artist(info),
     )
 
 
@@ -573,3 +592,76 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _bool_or_none(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
+
+
+def _resolve_thumbnail(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        return raw or None
+    if isinstance(raw, list) and raw:
+        first = raw[0]
+        if isinstance(first, dict):
+            return _str_or_none(first.get("url"))
+        if isinstance(first, str):
+            return first or None
+    return None
+
+
+def _build_creator_info(info: dict[str, Any]) -> CreatorInfo | None:
+    uid = _str_or_none(info.get("uploader_id") or info.get("channel_id"))
+    if not uid:
+        return None
+    uploader = _str_or_none(info.get("uploader") or info.get("channel"))
+    return CreatorInfo(
+        platform_user_id=uid,
+        handle=uploader,
+        display_name=uploader,
+        profile_url=_str_or_none(info.get("uploader_url") or info.get("channel_url")),
+        avatar_url=_resolve_thumbnail(info.get("uploader_thumbnail")),
+        follower_count=_int_or_none(
+            info.get("channel_follower_count") or info.get("channel_followers")
+        ),
+        is_verified=_bool_or_none(
+            info.get("channel_verified") or info.get("uploader_verified")
+        ),
+    )
+
+
+_MENTION_RE = re.compile(r"@([\w.]+)")
+
+
+def _extract_mentions(
+    description: str | None, platform: Platform
+) -> tuple[Mention, ...]:
+    if not description:
+        return ()
+    seen: set[str] = set()
+    result: list[Mention] = []
+    for m in _MENTION_RE.finditer(description):
+        handle = m.group(1).lower()
+        if handle in seen:
+            continue
+        seen.add(handle)
+        result.append(Mention(video_id=VideoId(0), handle=handle, platform=None))
+    return tuple(result)
+
+
+def _extract_hashtags(info: dict[str, Any]) -> tuple[str, ...]:
+    tags = info.get("tags")
+    if not tags:
+        return ()
+    return tuple(t for t in tags if t)
+
+
+def _extract_music_artist(info: dict[str, Any]) -> str | None:
+    artists = info.get("artists")
+    if artists:
+        return _str_or_none(artists[0])
+    return _str_or_none(info.get("artist"))

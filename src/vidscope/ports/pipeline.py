@@ -36,12 +36,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
 
 from vidscope.domain import (
     Analysis,
     Frame,
     Language,
+    Mention,
     Platform,
     PlatformId,
     Transcript,
@@ -52,6 +53,7 @@ from vidscope.ports.unit_of_work import UnitOfWork
 __all__ = [
     "Analyzer",
     "ChannelEntry",
+    "CreatorInfo",
     "Downloader",
     "FrameExtractor",
     "IngestOutcome",
@@ -64,6 +66,24 @@ __all__ = [
     "StageResult",
     "Transcriber",
 ]
+
+
+class CreatorInfo(TypedDict):
+    """Creator metadata extracted from a yt-dlp info_dict (M006/S02-P01).
+
+    All fields except ``platform_user_id`` are optional — yt-dlp does not
+    always expose them. ``platform_user_id`` is always a non-empty string
+    when a ``CreatorInfo`` is present (callers should never create one
+    without it).
+    """
+
+    platform_user_id: str
+    handle: str | None
+    display_name: str | None
+    profile_url: str | None
+    avatar_url: str | None
+    follower_count: int | None
+    is_verified: bool | None
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +191,12 @@ class IngestOutcome:
     duration: float | None = None
     upload_date: str | None = None
     view_count: int | None = None
+    creator_info: CreatorInfo | None = None
+    description: str | None = None
+    hashtags: tuple[str, ...] = ()
+    mentions: tuple[Mention, ...] = ()
+    music_track: str | None = None
+    music_artist: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,6 +239,12 @@ class ProbeResult:
     url: str
     detail: str
     title: str | None = None
+    uploader: str | None = None
+    uploader_id: str | None = None
+    uploader_url: str | None = None
+    channel_follower_count: int | None = None
+    uploader_thumbnail: str | None = None
+    uploader_verified: bool | None = None
 
 
 class ProbeStatus(StrEnum):

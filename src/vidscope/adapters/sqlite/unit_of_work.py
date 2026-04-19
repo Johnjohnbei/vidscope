@@ -25,7 +25,12 @@ from vidscope.adapters.sqlite.analysis_repository import AnalysisRepositorySQLit
 from vidscope.adapters.sqlite.collection_repository import (
     CollectionRepositorySQLite,
 )
+from vidscope.adapters.sqlite.creator_repository import CreatorRepositorySQLite
 from vidscope.adapters.sqlite.frame_repository import FrameRepositorySQLite
+from vidscope.adapters.sqlite.frame_text_repository import FrameTextRepositorySQLite
+from vidscope.adapters.sqlite.hashtag_repository import HashtagRepositorySQLite
+from vidscope.adapters.sqlite.link_repository import LinkRepositorySQLite
+from vidscope.adapters.sqlite.mention_repository import MentionRepositorySQLite
 from vidscope.adapters.sqlite.pipeline_run_repository import (
     PipelineRunRepositorySQLite,
 )
@@ -49,7 +54,12 @@ from vidscope.domain.errors import StorageError
 from vidscope.ports import (
     AnalysisRepository,
     CollectionRepository,
+    CreatorRepository,
     FrameRepository,
+    FrameTextRepository,
+    HashtagRepository,
+    LinkRepository,
+    MentionRepository,
     PipelineRunRepository,
     SearchIndex,
     TagRepository,
@@ -94,6 +104,11 @@ class SqliteUnitOfWork:
         self.video_tracking: VideoTrackingRepository
         self.tags: TagRepository
         self.collections: CollectionRepository
+        self.creators: CreatorRepository
+        self.hashtags: HashtagRepository
+        self.mentions: MentionRepository
+        self.links: LinkRepository
+        self.frame_texts: FrameTextRepository
 
     def __enter__(self) -> SqliteUnitOfWork:
         if self._connection is not None:
@@ -113,6 +128,11 @@ class SqliteUnitOfWork:
         self.video_tracking = VideoTrackingRepositorySQLite(self._connection)
         self.tags = TagRepositorySQLite(self._connection)
         self.collections = CollectionRepositorySQLite(self._connection)
+        self.creators = CreatorRepositorySQLite(self._connection)
+        self.hashtags = HashtagRepositorySQLite(self._connection)
+        self.mentions = MentionRepositorySQLite(self._connection)
+        self.links = LinkRepositorySQLite(self._connection)
+        self.frame_texts = FrameTextRepositorySQLite(self._connection)
 
         return self
 

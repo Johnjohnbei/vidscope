@@ -77,7 +77,7 @@ class TestTrendingToolRegistration:
         assert tool.description
 
     def test_total_tools_is_seven(self, sandboxed_container: Container) -> None:
-        """After S04, server must register exactly 7 tools."""
+        """Server registers 9 tools (get_creator + get_frame_texts added in M006/M008)."""
         server = build_mcp_server(sandboxed_container)
         tools = asyncio.run(server.list_tools())
         names = {tool.name for tool in tools}
@@ -89,6 +89,8 @@ class TestTrendingToolRegistration:
             "vidscope_get_status",
             "vidscope_suggest_related",
             "vidscope_trending",
+            "vidscope_get_creator",
+            "vidscope_get_frame_texts",
         }
 
 
