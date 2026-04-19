@@ -393,3 +393,124 @@ class TestStageIdentity:
 
         assert len(captured) == 1
         assert not Path(captured[0]).exists()
+
+
+# ---------------------------------------------------------------------------
+# Title corrections
+# ---------------------------------------------------------------------------
+
+
+def _outcome_with_title(title: str, destination_dir: str) -> IngestOutcome:
+    dest = Path(destination_dir) / "vid.mp4"
+    dest.write_bytes(b"fake")
+    return IngestOutcome(
+        platform=Platform.YOUTUBE,
+        platform_id=PlatformId("vid1"),
+        url="https://www.youtube.com/watch?v=vid1",
+        media_path=str(dest),
+        title=title,
+        author="author",
+        duration=10.0,
+    )
+
+
+class TestTitleCorrections:
+    def _run(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+        title: str,
+        corrections: list[tuple[str, str]],
+    ) -> str | None:
+        downloader = FakeDownloader(
+            outcome_factory=lambda d: _outcome_with_title(title, d)
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+            post_corrections=corrections,
+        )
+        ctx = PipelineContext(source_url="https://www.youtube.com/watch?v=vid1")
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+            return uow.videos.get_by_platform_id(
+                Platform.YOUTUBE, PlatformId("vid1")
+            ).title
+
+    def test_corrects_title_cloudcode(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        title = self._run(
+            engine, media_storage, cache_dir,
+            "Sortir du terminal pour les projets CloudCode",
+            [("CloudCode", "Claude Code"), ("Cloud Code", "Claude Code")],
+        )
+        assert title == "Sortir du terminal pour les projets Claude Code"
+
+    def test_correction_is_case_insensitive(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        title = self._run(
+            engine, media_storage, cache_dir,
+            "mes projets cloud code",
+            [("Cloud Code", "Claude Code")],
+        )
+        assert title == "mes projets Claude Code"
+
+    def test_no_corrections_leaves_title_unchanged(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        title = self._run(
+            engine, media_storage, cache_dir,
+            "Cloud Code tips",
+            [],
+        )
+        assert title == "Cloud Code tips"
+
+    def test_none_title_stays_none(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        downloader = FakeDownloader(
+            outcome_factory=lambda d: _outcome_with_title("x", d)  # placeholder
+        )
+
+        def factory(destination_dir: str) -> IngestOutcome:
+            dest = Path(destination_dir) / "none.mp4"
+            dest.write_bytes(b"fake")
+            return IngestOutcome(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("none1"),
+                url="https://www.youtube.com/watch?v=none1",
+                media_path=str(dest),
+                title=None,
+                author="author",
+                duration=10.0,
+            )
+
+        stage = IngestStage(
+            downloader=FakeDownloader(outcome_factory=factory),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+            post_corrections=[("Cloud Code", "Claude Code")],
+        )
+        ctx = PipelineContext(source_url="https://www.youtube.com/watch?v=none1")
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+            video = uow.videos.get_by_platform_id(
+                Platform.YOUTUBE, PlatformId("none1")
+            )
+        assert video.title is None

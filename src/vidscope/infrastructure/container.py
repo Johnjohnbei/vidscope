@@ -233,6 +233,7 @@ def build_container(config: Config | None = None) -> Container:
         downloader=downloader,
         media_storage=media_storage,
         cache_dir=resolved_config.cache_dir,
+        post_corrections=_vocab_corrections,
     )
     transcribe_stage = TranscribeStage(
         transcriber=transcriber,

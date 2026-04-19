@@ -27,6 +27,7 @@ with a probe-before-download optimization. See decision D025.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -59,6 +60,7 @@ class IngestStage:
         downloader: Downloader,
         media_storage: MediaStorage,
         cache_dir: Path,
+        post_corrections: list[tuple[str, str]] | None = None,
     ) -> None:
         """Construct the stage.
 
@@ -79,6 +81,7 @@ class IngestStage:
         self._downloader = downloader
         self._media_storage = media_storage
         self._cache_dir = cache_dir
+        self._post_corrections: list[tuple[str, str]] = post_corrections or []
 
     # ------------------------------------------------------------------
     # Stage protocol
@@ -150,12 +153,14 @@ class IngestStage:
 
             # 4. Build the domain Video entity with every piece of
             #    metadata the downloader gave us plus the storage key.
+            corrected_title = _correct(outcome.title, self._post_corrections)
+
             video = Video(
                 platform=outcome.platform,
                 platform_id=outcome.platform_id,
                 url=outcome.url,
                 author=outcome.author,
-                title=outcome.title,
+                title=corrected_title,
                 duration=outcome.duration,
                 upload_date=outcome.upload_date,
                 view_count=outcome.view_count,
@@ -185,6 +190,14 @@ class IngestStage:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _correct(text: str | None, corrections: list[tuple[str, str]]) -> str | None:
+    if not text or not corrections:
+        return text
+    for wrong, right in corrections:
+        text = re.sub(re.escape(wrong), right, text, flags=re.IGNORECASE)
+    return text
 
 
 def _build_media_key(
