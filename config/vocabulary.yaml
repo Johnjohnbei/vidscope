@@ -104,8 +104,11 @@ en:
 # Hotwords : mots à renforcer directement dans le beam search de Whisper.
 # Plus ciblé que l'initial_prompt — boost direct des tokens phonétiquement ambigus.
 hotwords:
+  - Claude
   - Claude Code
+  - Claude Agent
   - Claude Agent SDK
+  - claude.ai
   - Claude Sonnet
   - Claude Opus
   - Claude Haiku
@@ -120,3 +123,9 @@ corrections:
     right: "Claude Agent SDK"
   - wrong: "Cloud Allant SDK"
     right: "Claude Agent SDK"
+  - wrong: "Cloud Agent"
+    right: "Claude Agent"
+  - wrong: "Cloud desktop"
+    right: "Claude desktop"
+  - wrong: "Cloud de Anthropic"
+    right: "Claude de Anthropic"
