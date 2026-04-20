@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 from vidscope.domain import (
@@ -37,6 +38,7 @@ from vidscope.domain import (
     Platform,
     StageName,
     Video,
+    VideoStats,
     detect_platform,
 )
 from vidscope.ports import (
@@ -178,6 +180,7 @@ class IngestStage:
                 duration=outcome.duration,
                 upload_date=outcome.upload_date,
                 view_count=outcome.view_count,
+                description=outcome.description,
                 media_key=stored_key,
                 media_type=outcome.media_type,
             )
@@ -192,6 +195,18 @@ class IngestStage:
             ctx.media_key = persisted.media_key
             ctx.media_type = persisted.media_type
             ctx.carousel_item_keys = carousel_stored
+
+            # R061: persist initial engagement snapshot when the downloader
+            # surfaced like_count/comment_count at ingest time — avoids the
+            # need for a follow-up `vidscope refresh-stats`.
+            if outcome.like_count is not None or outcome.comment_count is not None:
+                initial_stats = VideoStats(
+                    video_id=persisted.id,
+                    captured_at=datetime.now(UTC).replace(microsecond=0),
+                    like_count=outcome.like_count,
+                    comment_count=outcome.comment_count,
+                )
+                uow.video_stats.append(initial_stats)
 
         message = (
             f"ingested {persisted.platform.value}/{persisted.platform_id}"
