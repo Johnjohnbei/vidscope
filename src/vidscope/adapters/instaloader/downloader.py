@@ -106,6 +106,9 @@ class InstaLoaderDownloader:
             upload_date=post.date_utc.strftime("%Y%m%d"),
             media_type=media_type,
             carousel_items=tuple(image_paths) if media_type == MediaType.CAROUSEL else (),
+            description=post.caption,
+            like_count=post.likes if post.likes is not None else None,
+            comment_count=post.comments if post.comments is not None else None,
         )
 
     def list_channel_videos(
