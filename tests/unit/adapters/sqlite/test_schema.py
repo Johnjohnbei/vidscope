@@ -115,6 +115,23 @@ class TestInitDb:
         with engine.begin() as conn:
             _ensure_video_stats_table(conn)  # second call — must be no-op
 
+    def test_ensure_description_column_idempotent(self, tmp_path: object) -> None:
+        """M012/S01 — description column added idempotently, second init_db is a no-op."""
+        from pathlib import Path
+        from sqlalchemy import create_engine, text
+        from vidscope.infrastructure.sqlite_engine import build_engine
+
+        db_path = Path(str(tmp_path)) / "test_desc.db"  # type: ignore[arg-type]
+        engine = build_engine(db_path)
+
+        init_db(engine)
+        init_db(engine)  # second call must not raise
+
+        with engine.connect() as conn:
+            cols = {row[1]: row[2] for row in conn.execute(text("PRAGMA table_info(videos)"))}
+        assert "description" in cols
+        assert cols["description"].upper() == "TEXT"
+
 
 class TestAnalysisV2Migration:
     """M010 additive migration on analyses table."""
