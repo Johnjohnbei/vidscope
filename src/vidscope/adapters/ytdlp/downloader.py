@@ -117,7 +117,7 @@ class YtdlpDownloader:
     def __init__(
         self,
         *,
-        format_spec: str = "best[ext=mp4]/best",
+        format_spec: str = "best[ext=mp4]/best[ext=jpg]/best[ext=png]/best[ext=webp]/best",
         cookies_file: Path | None = None,
     ) -> None:
         self._format_spec = format_spec

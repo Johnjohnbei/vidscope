@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -276,3 +277,104 @@ class TestCookiesClear:
         assert result.exit_code == EXIT_OK
         assert "removed" in result.stdout
         assert not cookies.exists()
+
+
+# ---------------------------------------------------------------------------
+# vidscope cookies from-browser
+# ---------------------------------------------------------------------------
+
+
+def _make_ydl_mock(tmp_path: Path, write_cookies: bool = True) -> MagicMock:
+    """Return a mock YoutubeDL context manager that optionally writes a cookies file."""
+
+    def _fake_init(options: dict, **_kwargs: object) -> MagicMock:
+        cm = MagicMock()
+        cookiefile = options.get("cookiefile")
+
+        def _enter(_self: object = None) -> MagicMock:
+            if write_cookies and cookiefile:
+                Path(cookiefile).write_text(
+                    "# Netscape HTTP Cookie File\n"
+                    ".instagram.com\tTRUE\t/\tTRUE\t9999999999\tsessionid\tabc\n"
+                    ".instagram.com\tTRUE\t/\tFALSE\t9999999999\tcsrftoken\tdef\n",
+                    encoding="utf-8",
+                )
+            return cm
+
+        cm.__enter__ = _enter
+        cm.__exit__ = MagicMock(return_value=False)
+        return cm
+
+    mock = MagicMock(side_effect=_fake_init)
+    return mock
+
+
+class TestFromBrowser:
+    def test_help_lists_from_browser(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["cookies", "--help"])
+        assert result.exit_code == EXIT_OK
+        assert "from-browser" in result.stdout
+
+    def test_unsupported_browser_fails(self, runner: CliRunner) -> None:
+        result = runner.invoke(app, ["cookies", "from-browser", "netscape"])
+        assert result.exit_code == EXIT_USER_ERROR
+        assert "Unsupported browser" in result.stdout
+
+    def test_success_writes_cookies_and_reports_count(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        with patch("yt_dlp.YoutubeDL", _make_ydl_mock(tmp_path)):
+            result = runner.invoke(app, ["cookies", "from-browser", "chrome"])
+        assert result.exit_code == EXIT_OK
+        assert "OK" in result.stdout
+        assert "cookies saved" in result.stdout
+        assert (tmp_path / "cookies.txt").exists()
+
+    def test_passes_browser_name_to_ydl(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        captured: list[dict] = []
+
+        def _fake_ydl(options: dict, **_kw: object) -> MagicMock:
+            captured.append(options)
+            return _make_ydl_mock(tmp_path)(options)
+
+        with patch("yt_dlp.YoutubeDL", _fake_ydl):
+            runner.invoke(app, ["cookies", "from-browser", "firefox"])
+
+        assert captured
+        browser_spec = captured[0]["cookiesfrombrowser"]
+        assert browser_spec[0] == "firefox"
+
+    def test_passes_profile_when_given(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        captured: list[dict] = []
+
+        def _fake_ydl(options: dict, **_kw: object) -> MagicMock:
+            captured.append(options)
+            return _make_ydl_mock(tmp_path)(options)
+
+        with patch("yt_dlp.YoutubeDL", _fake_ydl):
+            runner.invoke(app, ["cookies", "from-browser", "chrome", "--profile", "work"])
+
+        assert captured[0]["cookiesfrombrowser"] == ("chrome", "work", None, None)
+
+    def test_no_cookies_written_is_user_error(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        with patch("yt_dlp.YoutubeDL", _make_ydl_mock(tmp_path, write_cookies=False)):
+            result = runner.invoke(app, ["cookies", "from-browser", "chrome"])
+        assert result.exit_code == EXIT_USER_ERROR
+        assert "No cookies were written" in result.stdout
+
+    def test_ydl_exception_is_user_error(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        def _boom(options: dict, **_kw: object) -> MagicMock:
+            raise RuntimeError("browser not found")
+
+        with patch("yt_dlp.YoutubeDL", _boom):
+            result = runner.invoke(app, ["cookies", "from-browser", "chrome"])
+        assert result.exit_code == EXIT_USER_ERROR
+        assert "browser" in result.stdout.lower()

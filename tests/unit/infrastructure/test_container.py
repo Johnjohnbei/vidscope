@@ -47,12 +47,14 @@ class TestBuildContainer:
         # S05 additions: analyzer + analyze stage
         assert container.analyzer is not None
         assert container.analyzer.provider_name == "heuristic"
-        # S06 additions: index stage closes the pipeline
+        # M008/M007 additions: visual_intelligence + metadata_extract wired
         assert container.pipeline_runner.stage_names == (
             "ingest",
             "transcribe",
             "frames",
+            "visual_intelligence",
             "analyze",
+            "metadata_extract",
             "index",
         )
 
@@ -164,13 +166,14 @@ class TestCookiesIntegration:
         container = build_container()
         assert container.config.cookies_file is None
         # Downloader's private attribute should also be None
-        assert container.downloader._cookies_file is None
+        assert container.downloader._primary._cookies_file is None
 
     def test_cookies_file_propagates_to_downloader(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When VIDSCOPE_COOKIES_FILE points at a real file, the
-        downloader receives the resolved path."""
+        """When VIDSCOPE_COOKIES_FILE points at a real file, both the
+        primary (yt-dlp) and fallback (instaloader) downloaders receive
+        the resolved path."""
         from vidscope.infrastructure.config import reset_config_cache
 
         cookies = tmp_path / "real-cookies.txt"
@@ -180,10 +183,8 @@ class TestCookiesIntegration:
 
         container = build_container()
         assert container.config.cookies_file == cookies.resolve()
-        assert (
-            container.downloader._cookies_file
-            == cookies.resolve()
-        )
+        assert container.downloader._primary._cookies_file == cookies.resolve()
+        assert container.downloader._fallback._cookies_file == cookies.resolve()
 
     def test_misconfigured_cookies_file_fails_build_container(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

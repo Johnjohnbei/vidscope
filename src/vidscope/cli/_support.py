@@ -14,7 +14,7 @@ from contextlib import contextmanager
 import typer
 from rich.console import Console
 
-from vidscope.domain import DomainError, TrackingStatus
+from vidscope.domain import CookieAuthError, DomainError, TrackingStatus
 from vidscope.infrastructure.container import Container, build_container
 
 __all__ = [
@@ -76,6 +76,13 @@ def handle_domain_errors() -> Iterator[None]:
     """
     try:
         yield
+    except CookieAuthError as exc:
+        console.print(f"[bold red]error:[/bold red] {exc}")
+        console.print(
+            "[dim]hint: run [bold]vidscope cookies from-browser chrome[/bold] "
+            "(or firefox/edge/brave) to extract cookies automatically.[/dim]"
+        )
+        raise typer.Exit(1) from exc
     except DomainError as exc:
         raise fail_user(str(exc)) from exc
 

@@ -34,6 +34,8 @@ from vidscope.cli._support import (
 )
 from vidscope.ports import ProbeStatus
 
+_SUPPORTED_BROWSERS = ("chrome", "chromium", "firefox", "brave", "edge", "opera", "vivaldi", "safari")
+
 __all__ = ["cookies_app"]
 
 
@@ -205,6 +207,144 @@ def test_cookies(
 
         if result.probe.status != ProbeStatus.OK:
             raise typer.Exit(1)
+
+
+@cookies_app.command("login")
+def login(
+    platform: Annotated[
+        str,
+        typer.Argument(help="Platform to authenticate: instagram, tiktok, youtube."),
+    ] = "instagram",
+    timeout: Annotated[
+        int,
+        typer.Option("--timeout", "-t", help="Seconds to wait for login (default 300)."),
+    ] = 300,
+) -> None:
+    """Open a browser, log in, and capture cookies automatically.
+
+    A Chromium window opens — log into the platform normally.
+    Cookies are saved as soon as login is detected. No export needed.
+
+    Requires: uv sync --extra auth
+    """
+    from vidscope.adapters.auth import capture_platform_cookies  # noqa: PLC0415
+
+    from vidscope.adapters.auth.playwright_login import (  # noqa: PLC0415
+        SUPPORTED_PLATFORMS,
+    )
+
+    if platform not in SUPPORTED_PLATFORMS:
+        raise fail_user(
+            f"Unsupported platform {platform!r}. "
+            f"Supported: {', '.join(SUPPORTED_PLATFORMS)}"
+        )
+
+    container = acquire_container()
+    # Save to the active path (env override if set, otherwise default).
+    canonical_path = container.config.cookies_file or (
+        container.config.data_dir / "cookies.txt"
+    )
+
+    console.print(
+        f"Opening browser for [bold]{platform}[/bold] login… "
+        f"(timeout {timeout}s)"
+    )
+    console.print("[dim]Log in normally — the window will close automatically.[/dim]")
+
+    try:
+        count = capture_platform_cookies(platform, canonical_path, timeout_seconds=timeout)
+    except ImportError as exc:
+        raise fail_user(str(exc)) from exc
+    except RuntimeError as exc:
+        raise fail_user(str(exc)) from exc
+
+    console.print(f"[green]OK[/green] {count} cookies saved to {canonical_path}")
+    console.print("[dim]Run [bold]vidscope cookies test[/bold] to verify.[/dim]")
+
+
+@cookies_app.command("from-browser")
+def from_browser(
+    browser: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "Browser to extract cookies from. "
+                f"Supported: {', '.join(_SUPPORTED_BROWSERS)}."
+            ),
+        ),
+    ],
+    profile: Annotated[
+        str | None,
+        typer.Option(
+            "--profile",
+            "-p",
+            help="Browser profile name or path (optional).",
+        ),
+    ] = None,
+) -> None:
+    """Extract cookies directly from your browser — no export needed.
+
+    Reads the browser's local cookie store and saves the relevant
+    cookies to VidScope's canonical location. You must be logged into
+    Instagram (or other platforms) in the specified browser.
+
+    Examples:
+
+        vidscope cookies from-browser chrome
+
+        vidscope cookies from-browser firefox --profile work
+
+    Run ``vidscope cookies test`` afterwards to verify the cookies work.
+    """
+    import yt_dlp
+
+    browser_lower = browser.lower()
+    if browser_lower not in _SUPPORTED_BROWSERS:
+        raise fail_user(
+            f"Unsupported browser {browser!r}. "
+            f"Supported: {', '.join(_SUPPORTED_BROWSERS)}"
+        )
+
+    container = acquire_container()
+    canonical_path = container.config.data_dir / "cookies.txt"
+
+    browser_spec = f"{browser_lower}:{profile}" if profile else browser_lower
+    console.print(f"Extracting cookies from [bold]{browser_spec}[/bold]...")
+
+    try:
+        options: dict = {
+            "cookiesfrombrowser": (browser_lower, profile, None, None),
+            "cookiefile": str(canonical_path),
+            "quiet": True,
+            "no_warnings": True,
+        }
+        with yt_dlp.YoutubeDL(options):
+            pass  # cookie load happens in __init__, save happens in __exit__
+    except Exception as exc:
+        msg = str(exc)
+        if any(k in msg.lower() for k in ("not found", "could not find", "no such")):
+            raise fail_user(
+                f"Browser {browser_lower!r} not found. "
+                "Make sure it is installed and you have logged into Instagram."
+            ) from exc
+        raise fail_user(f"Failed to extract cookies from {browser_lower!r}: {msg}") from exc
+
+    if not canonical_path.exists() or canonical_path.stat().st_size == 0:
+        raise fail_user(
+            f"No cookies were written for {browser_lower!r}. "
+            "Make sure you are logged into Instagram in that browser."
+        )
+
+    cookie_lines = [
+        ln for ln in canonical_path.read_text(encoding="utf-8").splitlines()
+        if ln and not ln.startswith("#")
+    ]
+    console.print(
+        f"[green]OK[/green] {len(cookie_lines)} cookies saved to {canonical_path}"
+    )
+    console.print(
+        "[dim]Run [bold]vidscope cookies test[/bold] to verify Instagram access.[/dim]"
+    )
 
 
 @cookies_app.command("clear")

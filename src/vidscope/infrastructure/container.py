@@ -48,7 +48,11 @@ from vidscope.adapters.ffmpeg import FfmpegFrameExtractor
 from vidscope.adapters.fs.local_media_storage import LocalMediaStorage
 from vidscope.adapters.sqlite.schema import init_db
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
+from vidscope.adapters.text import RegexLinkExtractor
+from vidscope.adapters.vision import HaarcascadeFaceCounter, RapidOcrEngine
 from vidscope.adapters.whisper import FasterWhisperTranscriber
+from vidscope.adapters.composite import FallbackDownloader
+from vidscope.adapters.instaloader import InstaLoaderDownloader
 from vidscope.adapters.ytdlp import YtdlpDownloader, YtdlpStatsProbe
 from vidscope.infrastructure.analyzer_registry import build_analyzer
 from vidscope.infrastructure.config import Config, get_config
@@ -59,8 +63,10 @@ from vidscope.pipeline.stages import (
     FramesStage,
     IndexStage,
     IngestStage,
+    MetadataExtractStage,
     StatsStage,
     TranscribeStage,
+    VisualIntelligenceStage,
 )
 from vidscope.ports.clock import Clock
 from vidscope.ports.pipeline import (
@@ -185,7 +191,10 @@ def build_container(config: Config | None = None) -> Container:
     # IngestError so the operator sees the problem at startup, not on
     # the first ingest. When cookies_file is None (the default) the
     # downloader behaves exactly as it did before S07.
-    downloader = YtdlpDownloader(cookies_file=resolved_config.cookies_file)
+    downloader = FallbackDownloader(
+        primary=YtdlpDownloader(cookies_file=resolved_config.cookies_file),
+        fallback=InstaLoaderDownloader(cookies_file=resolved_config.cookies_file),
+    )
     stats_probe: StatsProbe = YtdlpStatsProbe(cookies_file=resolved_config.cookies_file)
     # StatsStage is standalone — NOT added to pipeline_runner.stages (anti-pitfall M009)
     stats_stage = StatsStage(stats_probe=stats_probe)
@@ -231,6 +240,10 @@ def build_container(config: Config | None = None) -> Container:
     # additional providers without changing this line.
     analyzer = build_analyzer(resolved_config.analyzer_name)
 
+    link_extractor = RegexLinkExtractor()
+    ocr_engine = RapidOcrEngine()
+    face_counter = HaarcascadeFaceCounter()
+
     ingest_stage = IngestStage(
         downloader=downloader,
         media_storage=media_storage,
@@ -246,7 +259,14 @@ def build_container(config: Config | None = None) -> Container:
         media_storage=media_storage,
         cache_dir=resolved_config.cache_dir,
     )
+    visual_intelligence_stage = VisualIntelligenceStage(
+        ocr_engine=ocr_engine,
+        face_counter=face_counter,
+        link_extractor=link_extractor,
+        media_storage=media_storage,
+    )
     analyze_stage = AnalyzeStage(analyzer=analyzer)
+    metadata_extract_stage = MetadataExtractStage(link_extractor=link_extractor)
     index_stage = IndexStage()
 
     pipeline_runner = PipelineRunner(
@@ -254,7 +274,9 @@ def build_container(config: Config | None = None) -> Container:
             ingest_stage,
             transcribe_stage,
             frames_stage,
+            visual_intelligence_stage,
             analyze_stage,
+            metadata_extract_stage,
             index_stage,
         ],
         unit_of_work_factory=_uow_factory,

@@ -582,6 +582,32 @@ class TestCookiesSupport:
 
 
 # ---------------------------------------------------------------------------
+# Format spec
+# ---------------------------------------------------------------------------
+
+
+class TestFormatSpec:
+    def test_default_includes_mp4(self, tmp_path: Path) -> None:
+        opts = YtdlpDownloader()._build_options(tmp_path)
+        assert "ext=mp4" in opts["format"]
+
+    def test_default_includes_image_extensions(self, tmp_path: Path) -> None:
+        opts = YtdlpDownloader()._build_options(tmp_path)
+        fmt = opts["format"]
+        assert "ext=jpg" in fmt
+        assert "ext=png" in fmt
+        assert "ext=webp" in fmt
+
+    def test_custom_format_spec_is_used(self, tmp_path: Path) -> None:
+        opts = YtdlpDownloader(format_spec="bestvideo+bestaudio/best")._build_options(tmp_path)
+        assert opts["format"] == "bestvideo+bestaudio/best"
+
+    def test_mp4_preferred_over_images(self, tmp_path: Path) -> None:
+        fmt = YtdlpDownloader()._build_options(tmp_path)["format"]
+        assert fmt.index("ext=mp4") < fmt.index("ext=jpg")
+
+
+# ---------------------------------------------------------------------------
 # M003: list_channel_videos
 # ---------------------------------------------------------------------------
 
