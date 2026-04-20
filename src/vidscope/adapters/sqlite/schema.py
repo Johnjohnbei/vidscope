@@ -439,6 +439,7 @@ def init_db(engine: Engine) -> None:
         _ensure_tags_collections_tables(conn)  # M011/S02
         _ensure_m006_m007_m008_tables(conn)  # M006/M007/M008
         _ensure_visual_media_columns(conn)  # visual_intelligence + media_type
+        _ensure_description_column(conn)      # M012/S01
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -855,6 +856,17 @@ def _ensure_visual_media_columns(conn: Connection) -> None:
         ("media_type", "VARCHAR(20)"),
     ]
     _ALLOWED = {"TEXT", "VARCHAR(32)", "VARCHAR(20)"}
+    _add_columns_if_missing(conn, "videos", new_columns, _ALLOWED)
+
+
+def _ensure_description_column(conn: Connection) -> None:
+    """M012/S01 migration: add description column to videos table.
+
+    Idempotent — safe to call on every startup. Pre-existing rows get NULL;
+    new ingest populates from downloader outcome (R060).
+    """
+    new_columns = [("description", "TEXT")]
+    _ALLOWED = {"TEXT"}
     _add_columns_if_missing(conn, "videos", new_columns, _ALLOWED)
 
 
