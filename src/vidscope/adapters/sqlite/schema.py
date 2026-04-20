@@ -106,6 +106,7 @@ videos = Table(
     Column("thumbnail_key", Text, nullable=True),
     Column("content_shape", String(32), nullable=True),
     Column("media_type", String(20), nullable=True),
+    Column("description", Text, nullable=True),  # M012/S01 — full caption text (R060)
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
 )
 
