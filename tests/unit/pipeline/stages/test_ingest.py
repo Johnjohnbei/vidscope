@@ -27,6 +27,35 @@ from vidscope.pipeline.stages.ingest import IngestStage
 from vidscope.ports import IngestOutcome, PipelineContext
 
 # ---------------------------------------------------------------------------
+# Instagram helper outcome factory (used in T10 tests)
+# ---------------------------------------------------------------------------
+
+
+def _instagram_outcome_factory(
+    platform_id: str = "p_12345",
+    *,
+    description: str | None = None,
+    like_count: int | None = None,
+    comment_count: int | None = None,
+):  # type: ignore[no-untyped-def]
+    """Return a factory that writes a fake image and builds an Instagram outcome."""
+
+    def build(destination_dir: str) -> IngestOutcome:
+        dest = Path(destination_dir) / f"{platform_id}.jpg"
+        dest.write_bytes(b"fake image content")
+        return IngestOutcome(
+            platform=Platform.INSTAGRAM,
+            platform_id=PlatformId(platform_id),
+            url=f"https://instagram.com/p/{platform_id}/",
+            media_path=str(dest),
+            description=description,
+            like_count=like_count,
+            comment_count=comment_count,
+        )
+
+    return build
+
+# ---------------------------------------------------------------------------
 # Fakes
 # ---------------------------------------------------------------------------
 
@@ -514,3 +543,105 @@ class TestTitleCorrections:
                 Platform.YOUTUBE, PlatformId("none1")
             )
         assert video.title is None
+
+
+# ---------------------------------------------------------------------------
+# M012/S01 — R060 description + R061 initial VideoStats
+# ---------------------------------------------------------------------------
+
+
+class TestDescriptionAndEngagement:
+    def test_description_persisted_to_video(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """R060 — outcome.description lands in videos.description after ingest."""
+        downloader = FakeDownloader(
+            outcome_factory=_instagram_outcome_factory(
+                "p_desc01",
+                description="Post caption text avec accents éàù",
+            )
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(
+            source_url="https://instagram.com/p/p_desc01/"
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            video = uow.videos.get(ctx.video_id)  # type: ignore[arg-type]
+            assert video is not None
+            assert video.description == "Post caption text avec accents éàù"
+
+    def test_initial_stats_created_from_engagement(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """R061 — outcome.like_count/comment_count produce an initial video_stats row."""
+        downloader = FakeDownloader(
+            outcome_factory=_instagram_outcome_factory(
+                "p_stats01",
+                like_count=100,
+                comment_count=5,
+            )
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(
+            source_url="https://instagram.com/p/p_stats01/"
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            latest = uow.video_stats.latest_for_video(ctx.video_id)  # type: ignore[arg-type]
+            assert latest is not None
+            assert latest.like_count == 100
+            assert latest.comment_count == 5
+            # captured_at must be UTC-aware and truncated to the second
+            assert latest.captured_at.tzinfo is not None
+            assert latest.captured_at.microsecond == 0
+
+    def test_no_stats_created_when_no_engagement(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+    ) -> None:
+        """When downloader surfaces no engagement, no video_stats row is written."""
+        downloader = FakeDownloader(
+            outcome_factory=_instagram_outcome_factory(
+                "p_nostats01",
+                like_count=None,
+                comment_count=None,
+            )
+        )
+        stage = IngestStage(
+            downloader=downloader,
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+        ctx = PipelineContext(
+            source_url="https://instagram.com/p/p_nostats01/"
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            latest = uow.video_stats.latest_for_video(ctx.video_id)  # type: ignore[arg-type]
+            assert latest is None
