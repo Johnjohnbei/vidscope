@@ -419,6 +419,8 @@ def _info_to_outcome(
         music_artist=_extract_music_artist(info),
         media_type=media_type,
         carousel_items=carousel_items,
+        like_count=_int_or_none(info.get("like_count")),
+        comment_count=_int_or_none(info.get("comment_count")),
     )
 
 
