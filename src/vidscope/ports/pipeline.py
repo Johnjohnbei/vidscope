@@ -202,6 +202,8 @@ class IngestOutcome:
     music_artist: str | None = None
     media_type: MediaType = MediaType.VIDEO
     carousel_items: tuple[str, ...] = ()
+    like_count: int | None = None
+    comment_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
