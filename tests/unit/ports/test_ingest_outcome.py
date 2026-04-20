@@ -78,3 +78,29 @@ class TestIngestOutcomeDefaults:
         )
         with pytest.raises(FrozenInstanceError):
             o.description = "mutate"  # type: ignore[misc]
+
+
+class TestIngestOutcomeEngagement:
+    """R061 — IngestOutcome carries initial engagement counters."""
+
+    def test_engagement_fields_default_to_none(self) -> None:
+        outcome = IngestOutcome(
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId("abc123"),
+            url="https://example.com/v/abc123",
+            media_path="/tmp/x.mp4",
+        )
+        assert outcome.like_count is None
+        assert outcome.comment_count is None
+
+    def test_engagement_fields_round_trip(self) -> None:
+        outcome = IngestOutcome(
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId("abc123"),
+            url="https://example.com/v/abc123",
+            media_path="/tmp/x.mp4",
+            like_count=42,
+            comment_count=7,
+        )
+        assert outcome.like_count == 42
+        assert outcome.comment_count == 7
