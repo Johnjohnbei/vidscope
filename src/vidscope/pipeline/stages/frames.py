@@ -10,6 +10,7 @@ pipeline_runs row.
 
 from __future__ import annotations
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -123,8 +124,11 @@ class FramesStage:
         with tempfile.TemporaryDirectory(
             prefix="vidscope-frames-", dir=str(self._cache_dir)
         ) as tmp:
+            # Resolve junction points so external processes (ffmpeg) can
+            # write to the temp directory on Windows MSIX environments.
+            real_tmp = os.path.realpath(tmp)
             raw_frames = self._extractor.extract_frames(
-                str(media_path), tmp, max_frames=self._max_frames
+                str(media_path), real_tmp, max_frames=self._max_frames
             )
 
             if not raw_frames:

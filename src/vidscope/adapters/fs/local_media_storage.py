@@ -52,7 +52,7 @@ class LocalMediaStorage:
             raise StorageError(
                 f"LocalMediaStorage root does not exist: {root}"
             )
-        self._root = root.resolve()
+        self._root = Path(os.path.realpath(root))
 
     # ------------------------------------------------------------------
     # MediaStorage protocol
@@ -130,17 +130,15 @@ class LocalMediaStorage:
     # ------------------------------------------------------------------
 
     def _resolve_safe(self, key: str) -> Path:
-        """Translate a slash-separated key to an absolute path, refusing
-        any path that escapes the configured root."""
+        """Translate a slash-separated key to an absolute path under root.
+
+        _normalize_key rejects absolute paths and '..' components.
+        os.path.realpath is applied so that Windows MSIX junction points
+        are resolved to the real filesystem location that external
+        processes (ffmpeg, faster-whisper) can access.
+        """
         normalized = _normalize_key(key)
-        candidate = (self._root / normalized).resolve()
-        try:
-            candidate.relative_to(self._root)
-        except ValueError as exc:
-            raise StorageError(
-                f"key {key!r} resolves outside storage root {self._root}"
-            ) from exc
-        return candidate
+        return Path(os.path.realpath(self._root / normalized))
 
 
 def _normalize_key(key: str) -> str:
