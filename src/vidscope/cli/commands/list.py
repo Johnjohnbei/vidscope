@@ -39,6 +39,7 @@ def list_command(
         table = Table(title=f"Recent videos ({len(result.videos)})", show_header=True)
         table.add_column("id", justify="right", style="dim")
         table.add_column("platform")
+        table.add_column("type")
         table.add_column("title", overflow="fold")
         table.add_column("author")
         table.add_column("duration", justify="right")
@@ -51,6 +52,7 @@ def list_command(
             table.add_row(
                 str(video.id) if video.id is not None else "-",
                 video.platform.value,
+                video.media_type.value,
                 (video.title or "")[:60],
                 (video.author or "-")[:30],
                 duration,

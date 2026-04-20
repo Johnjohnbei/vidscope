@@ -39,6 +39,7 @@ def show_command(
         lines = [
             f"[bold]id:[/bold] {video.id}",
             f"[bold]platform:[/bold] {video.platform.value}",
+            f"[bold]media_type:[/bold] {video.media_type.value}",
             f"[bold]platform_id:[/bold] {video.platform_id}",
             f"[bold]url:[/bold] {video.url}",
             f"[bold]title:[/bold] {video.title or '-'}",
