@@ -25,6 +25,7 @@ from vidscope.domain.values import (
     ContentType,
     CreatorId,
     Language,
+    MediaType,
     Platform,
     PlatformId,
     PlatformUserId,
@@ -83,6 +84,7 @@ class Video:
     description: str | None = None
     thumbnail_key: str | None = None
     content_shape: str | None = None
+    media_type: MediaType = MediaType.VIDEO
     hashtags: tuple[str, ...] = ()
     mentions: tuple[str, ...] = ()
     created_at: datetime | None = None

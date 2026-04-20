@@ -16,6 +16,7 @@ from pathlib import Path
 from vidscope.domain import (
     Frame,
     FrameExtractionError,
+    MediaType,
     StageName,
 )
 from vidscope.ports import (
@@ -74,6 +75,34 @@ class FramesStage:
             raise FrameExtractionError(
                 f"frames stage requires ctx.media_key for video {ctx.video_id}"
             )
+
+        # Static image — the media file itself is the single "frame".
+        if ctx.media_type == MediaType.IMAGE:
+            stored = uow.frames.add_many([
+                Frame(
+                    video_id=ctx.video_id,
+                    image_key=ctx.media_key,
+                    timestamp_ms=0,
+                    is_keyframe=True,
+                )
+            ])
+            ctx.frame_ids = [f.id for f in stored if f.id is not None]
+            return StageResult(message="1 frame (static image)")
+
+        # Carousel — each slide stored during ingest becomes a frame.
+        if ctx.media_type == MediaType.CAROUSEL and ctx.carousel_item_keys:
+            carousel_frames = [
+                Frame(
+                    video_id=ctx.video_id,
+                    image_key=item_key,
+                    timestamp_ms=i * 1000,
+                    is_keyframe=True,
+                )
+                for i, item_key in enumerate(ctx.carousel_item_keys)
+            ]
+            stored = uow.frames.add_many(carousel_frames)
+            ctx.frame_ids = [f.id for f in stored if f.id is not None]
+            return StageResult(message=f"{len(stored)} frames (carousel slides)")
 
         try:
             media_path = self._media_storage.resolve(ctx.media_key)

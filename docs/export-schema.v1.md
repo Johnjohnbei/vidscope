@@ -35,6 +35,7 @@ fields:
 | `notes` | `str \| null` | M011 user note or `null`. |
 | `tags` | `list[str]` | M011 tag names (lowercase). |
 | `collections` | `list[str]` | M011 collection names (case-preserved). |
+| `media_type` | `str` | Physical media type: `"video"`, `"image"`, or `"carousel"`. |
 | `exported_at` | `str` | ISO 8601 UTC timestamp of the export run. |
 
 ## Per-Format Conventions

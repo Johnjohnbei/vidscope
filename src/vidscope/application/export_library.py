@@ -54,6 +54,8 @@ class ExportRecord:
     # Tags + Collection
     tags: list[str]
     collections: list[str]
+    # Media
+    media_type: str           # "video" | "image" | "carousel"
     # Metadata
     exported_at: str          # ISO 8601 UTC
 
@@ -134,6 +136,7 @@ class ExportLibraryUseCase:
                     notes=tracking.notes if tracking else None,
                     tags=[t.name for t in video_tags],
                     collections=[c.name for c in video_colls],
+                    media_type=video.media_type.value,
                     exported_at=now_iso,
                 )
                 records.append(record)

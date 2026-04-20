@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from vidscope.domain import Platform, PlatformId, RunStatus, VideoId
+from vidscope.domain import MediaType, Platform, PlatformId, RunStatus, VideoId
 from vidscope.pipeline import PipelineRunner
 from vidscope.ports import PipelineContext, UnitOfWorkFactory
 
@@ -61,6 +61,7 @@ class IngestResult:
     title: str | None = None
     author: str | None = None
     duration: float | None = None
+    media_type: MediaType | None = None
 
 
 class IngestVideoUseCase:
@@ -140,6 +141,7 @@ class IngestVideoUseCase:
         title: str | None = None
         author: str | None = None
         duration: float | None = None
+        media_type: MediaType | None = None
 
         if video_id is not None:
             with self._uow_factory() as uow:
@@ -148,6 +150,7 @@ class IngestVideoUseCase:
                     title = video.title
                     author = video.author
                     duration = video.duration
+                    media_type = video.media_type
 
         message = (
             f"ingested {ctx.platform.value if ctx.platform else '?'}"
@@ -167,4 +170,5 @@ class IngestVideoUseCase:
             title=title,
             author=author,
             duration=duration,
+            media_type=media_type,
         )

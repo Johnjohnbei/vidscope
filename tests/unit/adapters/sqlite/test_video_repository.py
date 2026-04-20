@@ -179,3 +179,80 @@ class TestListByAuthor:
         with SqliteUnitOfWork(engine) as uow:
             result = uow.videos.list_by_author(Platform.YOUTUBE, "prolific", limit=3)
             assert len(result) == 3
+
+
+# ---------------------------------------------------------------------------
+# media_type round-trips
+# ---------------------------------------------------------------------------
+
+
+class TestMediaTypeRoundTrip:
+    def test_row_to_video_defaults_to_video_media_type_when_null(
+        self, engine: Engine
+    ) -> None:
+        from vidscope.domain import MediaType
+        from sqlalchemy import text
+
+        # Insert a row with media_type = NULL directly, bypassing the domain layer
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO videos (platform, platform_id, url, created_at) "
+                    "VALUES ('youtube', 'null_mt', 'https://example.com', datetime('now'))"
+                )
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            video = uow.videos.get_by_platform_id(Platform.YOUTUBE, PlatformId("null_mt"))
+            assert video is not None
+            assert video.media_type is MediaType.VIDEO
+
+    def test_row_to_video_reads_image_media_type(self, engine: Engine) -> None:
+        from vidscope.domain import MediaType
+
+        with SqliteUnitOfWork(engine) as uow:
+            stored = uow.videos.add(
+                _sample_video(
+                    platform_id=PlatformId("img1"),
+                    media_type=MediaType.IMAGE,
+                )
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get(stored.id)
+            assert found is not None
+            assert found.media_type is MediaType.IMAGE
+
+    def test_row_to_video_reads_carousel_media_type(self, engine: Engine) -> None:
+        from vidscope.domain import MediaType
+
+        with SqliteUnitOfWork(engine) as uow:
+            stored = uow.videos.add(
+                _sample_video(
+                    platform_id=PlatformId("car1"),
+                    media_type=MediaType.CAROUSEL,
+                )
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            found = uow.videos.get(stored.id)
+            assert found is not None
+            assert found.media_type is MediaType.CAROUSEL
+
+    def test_video_to_row_includes_media_type(self, engine: Engine) -> None:
+        from vidscope.domain import MediaType
+        from sqlalchemy import text
+
+        with SqliteUnitOfWork(engine) as uow:
+            uow.videos.add(
+                _sample_video(
+                    platform_id=PlatformId("mt_row"),
+                    media_type=MediaType.IMAGE,
+                )
+            )
+
+        with engine.connect() as conn:
+            raw = conn.execute(
+                text("SELECT media_type FROM videos WHERE platform_id = 'mt_row'")
+            ).scalar()
+        assert raw == "image"

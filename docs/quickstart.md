@@ -165,6 +165,23 @@ Inside that dir:
 To use a different location, set `VIDSCOPE_DATA_DIR` to an absolute
 path.
 
+## Adding images and carousels
+
+VidScope automatically handles Instagram image posts and multi-slide carousels
+alongside videos. The pipeline adapts: transcription is skipped (no audio),
+and frames use the images directly.
+
+```bash
+# Instagram image post (single photo)
+uv run vidscope add "https://www.instagram.com/p/EXAMPLE/"
+
+# Instagram carousel (multi-slide post)
+uv run vidscope add "https://www.instagram.com/p/CAROUSEL_EXAMPLE/"
+```
+
+Detection is automatic via yt-dlp: multiple downloads → carousel, single image
+extension → image, otherwise → video.
+
 ## Adding Instagram
 
 Instagram public Reels currently require authentication. The

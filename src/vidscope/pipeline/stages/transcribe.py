@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from vidscope.domain import (
+    MediaType,
     StageName,
     Transcript,
     TranscriptionError,
@@ -56,12 +57,13 @@ class TranscribeStage:
     # ------------------------------------------------------------------
 
     def is_satisfied(self, ctx: PipelineContext, uow: UnitOfWork) -> bool:
-        """Return True if a transcript already exists for the video.
+        """Return True if transcription is not needed or already done.
 
-        Cheap DB query — no model loading, no audio decoding. Lets
-        re-runs skip transcription entirely once the first run has
-        produced a transcript.
+        Images and carousels have no audio track — skip immediately.
+        For videos, a cheap DB query checks whether a transcript exists.
         """
+        if ctx.media_type in (MediaType.IMAGE, MediaType.CAROUSEL):
+            return True
         if ctx.video_id is None:
             return False
         existing = uow.transcripts.get_for_video(ctx.video_id)

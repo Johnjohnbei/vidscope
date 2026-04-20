@@ -163,3 +163,38 @@ class TestAnalyzeStageErrors:
             AnalysisError, match="provider down"
         ):
             stage.execute(ctx, uow)
+
+
+# ---------------------------------------------------------------------------
+# IMAGE / CAROUSEL short-circuit
+# ---------------------------------------------------------------------------
+
+
+class TestAnalyzeStageMediaType:
+    """is_satisfied must return True immediately for non-video media types."""
+
+    def test_is_satisfied_returns_true_for_image(
+        self, engine: Engine
+    ) -> None:
+        from vidscope.domain import MediaType
+
+        ctx = PipelineContext(
+            source_url="https://www.instagram.com/p/img1/",
+            media_type=MediaType.IMAGE,
+        )
+        stage = AnalyzeStage(analyzer=FakeAnalyzer())
+        with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is True
+
+    def test_is_satisfied_returns_true_for_carousel(
+        self, engine: Engine
+    ) -> None:
+        from vidscope.domain import MediaType
+
+        ctx = PipelineContext(
+            source_url="https://www.instagram.com/p/carousel1/",
+            media_type=MediaType.CAROUSEL,
+        )
+        stage = AnalyzeStage(analyzer=FakeAnalyzer())
+        with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is True

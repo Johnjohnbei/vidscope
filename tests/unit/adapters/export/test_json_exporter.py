@@ -19,6 +19,7 @@ def _fixture_records() -> list[ExportRecord]:
             actionability=80.0, content_type="tutorial",
             status="saved", starred=True, notes="great hook",
             tags=["idea"], collections=["Concurrents"],
+            media_type="video",
             exported_at="2026-04-18T10:00:00+00:00",
         ),
         ExportRecord(
@@ -29,6 +30,7 @@ def _fixture_records() -> list[ExportRecord]:
             actionability=None, content_type=None,
             status=None, starred=False, notes=None,
             tags=[], collections=[],
+            media_type="video",
             exported_at="2026-04-18T10:00:00+00:00",
         ),
     ]

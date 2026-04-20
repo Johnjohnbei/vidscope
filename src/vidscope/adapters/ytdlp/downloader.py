@@ -45,7 +45,7 @@ from yt_dlp.utils import DownloadError, ExtractorError
 
 import re
 
-from vidscope.domain import CookieAuthError, IngestError, Mention, Platform, PlatformId, VideoId
+from vidscope.domain import CookieAuthError, IngestError, MediaType, Mention, Platform, PlatformId, VideoId
 from vidscope.ports import ChannelEntry, CreatorInfo, IngestOutcome, ProbeResult, ProbeStatus
 
 __all__ = ["YtdlpDownloader"]
@@ -385,22 +385,27 @@ def _info_to_outcome(
 
     platform_id = PlatformId(str(raw_id))
 
-    # yt-dlp writes the downloaded file to a path derived from outtmpl.
-    # For a playlist we would see 'entries' — for single videos the top
-    # level dict carries the file info.
-    media_path = _resolve_media_path(info, destination_dir, platform_id)
-    if media_path is None:
+    media_type, media_paths = _detect_media_type_and_paths(
+        info, destination_dir, platform_id
+    )
+    if not media_paths:
         raise IngestError(
             f"yt-dlp downloaded {url!r} but no media file was found in "
             f"{destination_dir}",
             retryable=False,
         )
 
+    carousel_items: tuple[str, ...] = (
+        tuple(str(p) for p in media_paths)
+        if media_type == MediaType.CAROUSEL
+        else ()
+    )
+
     return IngestOutcome(
         platform=platform,
         platform_id=platform_id,
         url=str(info.get("webpage_url") or url),
-        media_path=str(media_path),
+        media_path=str(media_paths[0]),
         title=_str_or_none(info.get("title")),
         author=_str_or_none(info.get("uploader") or info.get("channel")),
         duration=_float_or_none(info.get("duration")),
@@ -412,6 +417,8 @@ def _info_to_outcome(
         mentions=_extract_mentions(info.get("description"), platform),
         music_track=_str_or_none(info.get("track")),
         music_artist=_extract_music_artist(info),
+        media_type=media_type,
+        carousel_items=carousel_items,
     )
 
 
@@ -443,6 +450,10 @@ def _resolve_media_path(
     platform_id: PlatformId,
 ) -> Path | None:
     """Find the actual downloaded file on disk.
+
+    Internal helper for :func:`_detect_media_type_and_paths`. Encapsulates
+    the multi-strategy search for the downloaded file path (via yt-dlp
+    info_dict or directory scan).
 
     Preference order:
     1. ``info['requested_downloads'][0]['filepath']`` (yt-dlp 2024+)
@@ -632,6 +643,48 @@ def _build_creator_info(info: dict[str, Any]) -> CreatorInfo | None:
             info.get("channel_verified") or info.get("uploader_verified")
         ),
     )
+
+
+_IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset({
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".avif",
+})
+
+
+def _detect_media_type_and_paths(
+    info: dict[str, Any],
+    destination_dir: Path,
+    platform_id: PlatformId,
+) -> tuple[MediaType, list[Path]]:
+    """Return the inferred MediaType and all downloaded file paths.
+
+    - Multiple requested_downloads → CAROUSEL (Instagram sidecar / album)
+    - Single download with image extension → IMAGE
+    - Otherwise → VIDEO
+    """
+    requested = info.get("requested_downloads")
+    if isinstance(requested, list) and len(requested) > 1:
+        paths: list[Path] = []
+        for entry in requested:
+            if not isinstance(entry, dict):
+                continue
+            fp = entry.get("filepath") or entry.get("_filename")
+            if fp:
+                candidate = Path(str(fp))
+                if candidate.exists():
+                    paths.append(candidate)
+        if len(paths) > 1:
+            return MediaType.CAROUSEL, paths
+        if len(paths) == 1:
+            if paths[0].suffix.lower() in _IMAGE_EXTENSIONS:
+                return MediaType.IMAGE, paths
+            return MediaType.VIDEO, paths
+
+    single = _resolve_media_path(info, destination_dir, platform_id)
+    if single is None:
+        return MediaType.VIDEO, []
+    if single.suffix.lower() in _IMAGE_EXTENSIONS:
+        return MediaType.IMAGE, [single]
+    return MediaType.VIDEO, [single]
 
 
 _MENTION_RE = re.compile(r"@([\w.]+)")

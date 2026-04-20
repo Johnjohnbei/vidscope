@@ -42,6 +42,7 @@ from vidscope.domain import (
     Analysis,
     Frame,
     Language,
+    MediaType,
     Mention,
     Platform,
     PlatformId,
@@ -113,6 +114,8 @@ class PipelineContext:
     language: Language | None = None
     frame_ids: list[int] = field(default_factory=list)
     analysis_id: int | None = None
+    media_type: MediaType | None = None
+    carousel_item_keys: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +200,8 @@ class IngestOutcome:
     mentions: tuple[Mention, ...] = ()
     music_track: str | None = None
     music_artist: str | None = None
+    media_type: MediaType = MediaType.VIDEO
+    carousel_items: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -310,3 +310,124 @@ class TestFramesStageErrors:
             FrameExtractionError, match="no frames"
         ):
             stage.execute(ctx, uow)
+
+
+# ---------------------------------------------------------------------------
+# IMAGE / CAROUSEL paths
+# ---------------------------------------------------------------------------
+
+
+class TestFramesStageMediaType:
+    def test_execute_image_creates_single_frame_from_media_key(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+        media_file: str,
+    ) -> None:
+        from vidscope.domain import MediaType
+
+        video_id = _seed_video(engine, media_file)
+        ctx = PipelineContext(
+            source_url="x",
+            video_id=video_id,
+            media_key=media_file,
+            media_type=MediaType.IMAGE,
+        )
+        stage = FramesStage(
+            frame_extractor=FakeFrameExtractor(),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            result = stage.execute(ctx, uow)
+
+        assert "static image" in result.message
+        assert len(ctx.frame_ids) == 1
+
+        with SqliteUnitOfWork(engine) as uow:
+            persisted = uow.frames.list_for_video(video_id)
+            assert len(persisted) == 1
+            assert persisted[0].image_key == media_file
+            assert persisted[0].timestamp_ms == 0
+            assert persisted[0].is_keyframe is True
+
+    def test_execute_carousel_creates_frames_from_item_keys(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+        media_file: str,
+        storage_root: Path,
+    ) -> None:
+        from vidscope.domain import MediaType
+
+        # Create 3 fake carousel item files under storage
+        item_keys = []
+        for i in range(3):
+            key = f"videos/instagram/car1/items/{i:04d}.jpg"
+            target = storage_root / "videos" / "instagram" / "car1" / "items"
+            target.mkdir(parents=True, exist_ok=True)
+            (target / f"{i:04d}.jpg").write_bytes(b"fake jpg")
+            item_keys.append(key)
+
+        video_id = _seed_video(engine, media_file)
+        ctx = PipelineContext(
+            source_url="x",
+            video_id=video_id,
+            media_key=item_keys[0],
+            media_type=MediaType.CAROUSEL,
+            carousel_item_keys=item_keys,
+        )
+        stage = FramesStage(
+            frame_extractor=FakeFrameExtractor(),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            result = stage.execute(ctx, uow)
+
+        assert "carousel slides" in result.message
+        assert len(ctx.frame_ids) == 3
+
+        with SqliteUnitOfWork(engine) as uow:
+            persisted = uow.frames.list_for_video(video_id)
+            assert len(persisted) == 3
+            for i, frame in enumerate(persisted):
+                assert frame.image_key == item_keys[i]
+                assert frame.timestamp_ms == i * 1000
+                assert frame.is_keyframe is True
+
+    def test_execute_carousel_empty_item_keys_falls_through_to_video_path(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        cache_dir: Path,
+        media_file: str,
+    ) -> None:
+        """CAROUSEL with no carousel_item_keys falls through to the normal
+        video extraction path (uses the extractor)."""
+        from vidscope.domain import MediaType
+
+        video_id = _seed_video(engine, media_file)
+        ctx = PipelineContext(
+            source_url="x",
+            video_id=video_id,
+            platform=Platform.YOUTUBE,
+            platform_id=PlatformId("abc123"),
+            media_key=media_file,
+            media_type=MediaType.CAROUSEL,
+            carousel_item_keys=[],  # empty — fall through
+        )
+        stage = FramesStage(
+            frame_extractor=FakeFrameExtractor(frame_count=2),
+            media_storage=media_storage,
+            cache_dir=cache_dir,
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            result = stage.execute(ctx, uow)
+
+        assert "extracted 2 frames" in result.message

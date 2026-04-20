@@ -7,6 +7,7 @@ from sqlalchemy import Engine, inspect, text
 from vidscope.adapters.sqlite.schema import (
     _ensure_analysis_v2_columns,
     _ensure_video_stats_table,
+    _ensure_visual_media_columns,
     init_db,
 )
 
@@ -175,3 +176,108 @@ class TestAnalysisV2Migration:
         assert row["score"] == 42
         assert row["summary"] == "legacy summary"
         assert row["reasoning"] is None
+
+
+class TestVisualMediaColumnsMigration:
+    """_ensure_visual_media_columns adds thumbnail_key, content_shape, media_type."""
+
+    def test_columns_exist_after_init_db(self, engine: Engine) -> None:
+        with engine.connect() as conn:
+            cols = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(videos)"))
+            }
+        assert "thumbnail_key" in cols
+        assert "content_shape" in cols
+        assert "media_type" in cols
+
+    def test_ensure_visual_media_columns_is_idempotent(
+        self, engine: Engine
+    ) -> None:
+        with engine.begin() as conn:
+            _ensure_visual_media_columns(conn)
+            _ensure_visual_media_columns(conn)
+        # no exception means idempotent
+
+    def test_adds_columns_to_db_missing_them(self, tmp_path: object) -> None:
+        """Simulate a pre-migration DB that has no visual media columns."""
+        from pathlib import Path
+
+        from vidscope.infrastructure.sqlite_engine import build_engine
+
+        db_path = Path(str(tmp_path)) / "pre_visual.db"  # type: ignore[arg-type]
+        eng = build_engine(db_path)
+        # Create the videos table without the visual columns
+        with eng.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE videos ("
+                    "id INTEGER PRIMARY KEY, "
+                    "platform TEXT NOT NULL, "
+                    "platform_id TEXT NOT NULL UNIQUE, "
+                    "url TEXT NOT NULL, "
+                    "created_at TEXT NOT NULL"
+                    ")"
+                )
+            )
+            # Confirm the columns are absent before migration
+            cols_before = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(videos)"))
+            }
+            assert "thumbnail_key" not in cols_before
+            assert "content_shape" not in cols_before
+            assert "media_type" not in cols_before
+
+            _ensure_visual_media_columns(conn)
+
+            cols_after = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(videos)"))
+            }
+
+        assert "thumbnail_key" in cols_after
+        assert "content_shape" in cols_after
+        assert "media_type" in cols_after
+
+    def test_pre_existing_rows_survive_migration(self, tmp_path: object) -> None:
+        """Rows inserted before the visual columns must remain intact after migration."""
+        from pathlib import Path
+
+        from vidscope.infrastructure.sqlite_engine import build_engine
+
+        db_path = Path(str(tmp_path)) / "pre_visual2.db"  # type: ignore[arg-type]
+        eng = build_engine(db_path)
+        with eng.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE TABLE videos ("
+                    "id INTEGER PRIMARY KEY, "
+                    "platform TEXT NOT NULL, "
+                    "platform_id TEXT NOT NULL UNIQUE, "
+                    "url TEXT NOT NULL, "
+                    "created_at TEXT NOT NULL"
+                    ")"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO videos (platform, platform_id, url, created_at) "
+                    "VALUES ('youtube', 'old1', 'https://example.com', '2026-01-01')"
+                )
+            )
+            _ensure_visual_media_columns(conn)
+
+        with eng.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT platform_id, thumbnail_key, content_shape, media_type "
+                    "FROM videos WHERE platform_id = 'old1'"
+                )
+            ).mappings().first()
+
+        assert row is not None
+        assert row["platform_id"] == "old1"
+        assert row["thumbnail_key"] is None
+        assert row["content_shape"] is None
+        assert row["media_type"] is None

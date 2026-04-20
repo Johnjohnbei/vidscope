@@ -76,6 +76,9 @@ def _video_to_dict(video: Video) -> dict[str, Any]:
         "upload_date": video.upload_date,
         "view_count": video.view_count,
         "media_key": video.media_key,
+        "media_type": video.media_type.value,
+        "thumbnail_key": video.thumbnail_key,
+        "content_shape": video.content_shape,
         "created_at": video.created_at.isoformat() if video.created_at else None,
     }
 
@@ -125,6 +128,7 @@ def build_mcp_server(container: Container) -> FastMCP:
             "title": result.title,
             "author": result.author,
             "duration": result.duration,
+            "media_type": result.media_type.value if result.media_type else "video",
         }
 
     @mcp.tool()
@@ -202,8 +206,8 @@ def build_mcp_server(container: Container) -> FastMCP:
 
     @mcp.tool()
     def vidscope_get_video(video_id: int) -> dict[str, Any]:
-        """Return the full record for a video: metadata, transcript
-        summary, frame count, and analysis.
+        """Return the full record for a video: metadata (including media_type),
+        transcript summary, frame count, and analysis.
         """
         try:
             use_case = ShowVideoUseCase(

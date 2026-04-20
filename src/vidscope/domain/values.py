@@ -25,9 +25,11 @@ from typing import NewType
 
 __all__ = [
     "CollectionName",
+    "ContentShape",
     "ContentType",
     "CreatorId",
     "Language",
+    "MediaType",
     "Platform",
     "PlatformId",
     "PlatformUserId",
@@ -63,6 +65,22 @@ CollectionName = NewType("CollectionName", str)
 """User-facing collection name. Case-preserved (D3 M011 RESEARCH) —
 unlike TagName, the DB stores "Concurrents" and "concurrents" as
 distinct rows."""
+
+
+class MediaType(StrEnum):
+    """Physical media type of a post as determined at ingest time.
+
+    Assigned by the downloader (M0XX) and carried through the pipeline
+    so stages can branch without inspecting file extensions.
+
+    - VIDEO  : standard audio+video container (.mp4, .webm, …)
+    - IMAGE  : single static image (.jpg, .png, .webp, …)
+    - CAROUSEL : multi-image or mixed-media post (Instagram sidecar)
+    """
+
+    VIDEO = "video"
+    IMAGE = "image"
+    CAROUSEL = "carousel"
 
 
 class ContentShape(StrEnum):

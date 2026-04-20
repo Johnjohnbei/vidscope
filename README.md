@@ -76,7 +76,13 @@ vidscope export --format csv --out report.csv
 4. **Analyze** — pluggable provider produces keywords, topics, score, summary
 5. **Index** — FTS5 indexes transcripts and analyses for full-text search
 
-Re-running `vidscope add` on a video that previously failed resumes from the last incomplete stage. Every stage commits transactionally with its `pipeline_runs` row.
+The pipeline adapts automatically to three media types:
+
+- **VIDEO** — full pipeline: download → transcribe → extract frames → analyze → index
+- **IMAGE** — transcription skipped (no audio); frames = the image itself
+- **CAROUSEL** — transcription skipped; frames = one per slide
+
+Detection is automatic via yt-dlp: multiple downloads → carousel, single image extension → image, otherwise → video. Re-running `vidscope add` on a video that previously failed resumes from the last incomplete stage. Every stage commits transactionally with its `pipeline_runs` row.
 
 ## Architecture
 

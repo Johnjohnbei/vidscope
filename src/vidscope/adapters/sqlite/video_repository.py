@@ -15,7 +15,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
 
 from vidscope.adapters.sqlite.schema import videos as videos_table
-from vidscope.domain import CreatorId, Platform, PlatformId, Video, VideoId
+from vidscope.domain import CreatorId, MediaType, Platform, PlatformId, Video, VideoId
 from vidscope.domain.errors import StorageError
 
 __all__ = ["VideoRepositorySQLite"]
@@ -172,6 +172,27 @@ class VideoRepositorySQLite:
         ).scalar()
         return int(total or 0)
 
+    def update_visual_metadata(
+        self,
+        video_id: VideoId,
+        *,
+        thumbnail_key: str | None = None,
+        content_shape: str | None = None,
+    ) -> None:
+        """Persist VisualIntelligence results back onto the videos row."""
+        updates: dict[str, Any] = {}
+        if thumbnail_key is not None:
+            updates["thumbnail_key"] = thumbnail_key
+        if content_shape is not None:
+            updates["content_shape"] = content_shape
+        if not updates:
+            return
+        self._conn.execute(
+            videos_table.update()
+            .where(videos_table.c.id == int(video_id))
+            .values(**updates)
+        )
+
     def count(self) -> int:
         total = self._conn.execute(
             select(func.count()).select_from(videos_table)
@@ -198,6 +219,9 @@ def _video_to_row(video: Video) -> dict[str, Any]:
         "upload_date": video.upload_date,
         "view_count": video.view_count,
         "media_key": video.media_key,
+        "thumbnail_key": video.thumbnail_key,
+        "content_shape": video.content_shape,
+        "media_type": video.media_type.value,
         "created_at": video.created_at or datetime.now(UTC),
     }
 
@@ -206,6 +230,7 @@ def _row_to_video(row: Any) -> Video:
     """Translate a SQLAlchemy row mapping to a domain :class:`Video`."""
     data = cast("dict[str, Any]", dict(row))
     raw_creator_id = data.get("creator_id")
+    raw_media_type = data.get("media_type")
     return Video(
         id=VideoId(int(data["id"])),
         platform=Platform(data["platform"]),
@@ -217,6 +242,9 @@ def _row_to_video(row: Any) -> Video:
         upload_date=data.get("upload_date"),
         view_count=data.get("view_count"),
         media_key=data.get("media_key"),
+        thumbnail_key=data.get("thumbnail_key"),
+        content_shape=data.get("content_shape"),
+        media_type=MediaType(raw_media_type) if raw_media_type else MediaType.VIDEO,
         creator_id=CreatorId(int(raw_creator_id)) if raw_creator_id is not None else None,
         created_at=_ensure_utc(data.get("created_at")),
     )

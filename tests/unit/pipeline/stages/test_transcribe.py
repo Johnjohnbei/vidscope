@@ -13,6 +13,7 @@ from vidscope.adapters.sqlite.schema import init_db
 from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from vidscope.domain import (
     Language,
+    MediaType,
     Platform,
     PlatformId,
     Transcript,
@@ -302,3 +303,64 @@ class TestTranscribeStageErrors:
             transcriber=FakeTranscriber(), media_storage=media_storage
         )
         assert stage.name == StageName.TRANSCRIBE.value
+
+
+# ---------------------------------------------------------------------------
+# IMAGE / CAROUSEL short-circuit
+# ---------------------------------------------------------------------------
+
+
+class TestTranscribeStageMediaType:
+    """is_satisfied must return True immediately for non-video media types
+    without touching the DB (no video_id required)."""
+
+    def test_is_satisfied_returns_true_for_image(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+    ) -> None:
+        ctx = PipelineContext(
+            source_url="https://www.instagram.com/p/img1/",
+            media_type=MediaType.IMAGE,
+            # Deliberately no video_id — DB must not be queried
+        )
+        stage = TranscribeStage(
+            transcriber=FakeTranscriber(), media_storage=media_storage
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is True
+
+    def test_is_satisfied_returns_true_for_carousel(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+    ) -> None:
+        ctx = PipelineContext(
+            source_url="https://www.instagram.com/p/carousel1/",
+            media_type=MediaType.CAROUSEL,
+        )
+        stage = TranscribeStage(
+            transcriber=FakeTranscriber(), media_storage=media_storage
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is True
+
+    def test_is_satisfied_video_checks_db_and_returns_false_when_no_transcript(
+        self,
+        engine: Engine,
+        media_storage: LocalMediaStorage,
+        media_file: str,
+    ) -> None:
+        """VIDEO media type falls through to the DB query; no transcript → False."""
+        video_id = _seed_video(engine, media_file)
+        ctx = PipelineContext(
+            source_url="https://www.youtube.com/watch?v=abc123",
+            video_id=video_id,
+            media_key=media_file,
+            media_type=MediaType.VIDEO,
+        )
+        stage = TranscribeStage(
+            transcriber=FakeTranscriber(), media_storage=media_storage
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is False

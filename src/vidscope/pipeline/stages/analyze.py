@@ -12,6 +12,7 @@ from __future__ import annotations
 from vidscope.domain import (
     Analysis,
     AnalysisError,
+    MediaType,
     StageName,
 )
 from vidscope.ports import (
@@ -33,7 +34,13 @@ class AnalyzeStage:
         self._analyzer = analyzer
 
     def is_satisfied(self, ctx: PipelineContext, uow: UnitOfWork) -> bool:
-        """Return True if any analysis already exists for the video."""
+        """Return True if analysis can be skipped.
+
+        IMAGE and CAROUSEL have no transcript — text analysis is not
+        applicable. For VIDEO, skip only when an analysis already exists.
+        """
+        if ctx.media_type in (MediaType.IMAGE, MediaType.CAROUSEL):
+            return True
         if ctx.video_id is None:
             return False
         existing = uow.analyses.get_latest_for_video(ctx.video_id)

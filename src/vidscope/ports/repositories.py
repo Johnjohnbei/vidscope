@@ -126,6 +126,20 @@ class VideoRepository(Protocol):
         """
         ...
 
+    def update_visual_metadata(
+        self,
+        video_id: VideoId,
+        *,
+        thumbnail_key: str | None = None,
+        content_shape: str | None = None,
+    ) -> None:
+        """Persist visual-intelligence results (thumbnail key + content shape).
+
+        Only updates the supplied (non-None) kwargs. Called by
+        VisualIntelligenceStage after face-count analysis completes.
+        """
+        ...
+
     def count(self) -> int:
         """Return the total number of videos in the store."""
         ...

@@ -33,6 +33,7 @@ from pathlib import Path
 
 from vidscope.domain import (
     IngestError,
+    MediaType,
     Platform,
     StageName,
     Video,
@@ -144,15 +145,28 @@ class IngestStage:
                     retryable=False,
                 )
 
-            media_key = _build_media_key(
-                platform=outcome.platform,
-                platform_id=outcome.platform_id,
-                source_path=source_path,
-            )
-            stored_key = self._media_storage.store(media_key, source_path)
+            # 4. Store the media file(s).
+            #    VIDEO/IMAGE → single key; CAROUSEL → one key per slide.
+            carousel_stored: list[str] = []
+            if outcome.media_type == MediaType.CAROUSEL and outcome.carousel_items:
+                for idx, item_path_str in enumerate(outcome.carousel_items):
+                    item_path = Path(item_path_str)
+                    item_key = (
+                        f"videos/{outcome.platform.value}/"
+                        f"{outcome.platform_id}/items/{idx:04d}{item_path.suffix}"
+                    )
+                    stored_item = self._media_storage.store(item_key, item_path)
+                    carousel_stored.append(stored_item)
+                stored_key = carousel_stored[0]
+            else:
+                media_key = _build_media_key(
+                    platform=outcome.platform,
+                    platform_id=outcome.platform_id,
+                    source_path=source_path,
+                )
+                stored_key = self._media_storage.store(media_key, source_path)
 
-            # 4. Build the domain Video entity with every piece of
-            #    metadata the downloader gave us plus the storage key.
+            # 5. Build the domain Video entity.
             corrected_title = _correct(outcome.title, self._post_corrections)
 
             video = Video(
@@ -165,20 +179,19 @@ class IngestStage:
                 upload_date=outcome.upload_date,
                 view_count=outcome.view_count,
                 media_key=stored_key,
+                media_type=outcome.media_type,
             )
 
-            # 5. Upsert the videos row. platform_id uniqueness makes
-            #    this idempotent — a second run updates instead of
-            #    raising.
+            # 6. Upsert the videos row.
             persisted = uow.videos.upsert_by_platform_id(video)
 
-            # 6. Mutate the pipeline context so downstream stages
-            #    (transcribe, frames, analyze) can read what we
-            #    produced.
+            # 7. Mutate the pipeline context.
             ctx.video_id = persisted.id
             ctx.platform = persisted.platform
             ctx.platform_id = persisted.platform_id
             ctx.media_key = persisted.media_key
+            ctx.media_type = persisted.media_type
+            ctx.carousel_item_keys = carousel_stored
 
         message = (
             f"ingested {persisted.platform.value}/{persisted.platform_id}"

@@ -103,6 +103,9 @@ videos = Table(
     Column("view_count", Integer, nullable=True),
     Column("media_key", Text, nullable=True),
     Column("creator_id", Integer, ForeignKey("creators.id"), nullable=True),
+    Column("thumbnail_key", Text, nullable=True),
+    Column("content_shape", String(32), nullable=True),
+    Column("media_type", String(20), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, default=_utc_now),
 )
 
@@ -435,6 +438,7 @@ def init_db(engine: Engine) -> None:
         _ensure_video_tracking_table(conn)  # M011/S01
         _ensure_tags_collections_tables(conn)  # M011/S02
         _ensure_m006_m007_m008_tables(conn)  # M006/M007/M008
+        _ensure_visual_media_columns(conn)  # visual_intelligence + media_type
 
 
 def _create_fts5(conn: Connection) -> None:
@@ -523,6 +527,46 @@ def _ensure_video_stats_indexes(conn: Connection) -> None:
     )
 
 
+def _add_columns_if_missing(
+    conn: Connection,
+    table_name: str,
+    new_columns: list[tuple[str, str]],
+    allowed_types: set[str],
+) -> None:
+    """Helper to idempotently add nullable columns to a table.
+
+    Uses ``PRAGMA table_info`` to check which columns already exist,
+    then issues ``ALTER TABLE ... ADD COLUMN`` for any missing ones.
+    Validates column types against ``allowed_types`` to defend against
+    DDL injection (T-SQL-M011-02). Idempotent — safe to call repeatedly.
+
+    Parameters
+    ----------
+    conn
+        SQLAlchemy connection (transaction scope).
+    table_name
+        Name of the target table.
+    new_columns
+        List of (column_name, column_type) tuples to add if missing.
+    allowed_types
+        Set of allowed DDL type strings. Any type not in this set
+        raises ValueError.
+    """
+    existing_cols = {
+        row[1]
+        for row in conn.execute(text(f"PRAGMA table_info({table_name})"))
+    }
+    for col_name, col_type in new_columns:
+        if col_name in existing_cols:
+            continue
+        if col_type not in allowed_types:
+            raise ValueError(f"DDL type non autorisé : {col_type!r}")
+        safe_col = col_name.replace('"', '""')  # SQL identifier escaping
+        conn.execute(
+            text(f'ALTER TABLE {table_name} ADD COLUMN "{safe_col}" {col_type}')
+        )
+
+
 def _ensure_analysis_v2_columns(conn: Connection) -> None:
     """M010 additive migration: ensure ``analyses`` carries the 9 new columns.
 
@@ -534,10 +578,6 @@ def _ensure_analysis_v2_columns(conn: Connection) -> None:
 
     Idempotent — safe to call on every startup.
     """
-    existing_cols = {
-        row[1]
-        for row in conn.execute(text("PRAGMA table_info(analyses)"))
-    }
     # T-SQL-M011-02: DDL does not support bound parameters, so we defend by
     # (a) quoting the column identifier and (b) validating the type against an
     # explicit allowlist.  Both values are currently compile-time constants;
@@ -561,15 +601,7 @@ def _ensure_analysis_v2_columns(conn: Connection) -> None:
         ("content_type", "VARCHAR(64)"),
         ("reasoning", "TEXT"),
     ]
-    for col_name, col_type in new_columns:
-        if col_name in existing_cols:
-            continue
-        if col_type not in _ALLOWED_DDL_TYPES:
-            raise ValueError(f"DDL type non autorisé : {col_type!r}")
-        safe_col = col_name.replace('"', '""')  # SQL identifier escaping
-        conn.execute(
-            text(f'ALTER TABLE analyses ADD COLUMN "{safe_col}" {col_type}')
-        )
+    _add_columns_if_missing(conn, "analyses", new_columns, _ALLOWED_DDL_TYPES)
 
 
 def _ensure_video_tracking_table(conn: Connection) -> None:
@@ -808,6 +840,22 @@ def _ensure_m006_m007_m008_tables(conn: Connection) -> None:
                 "ON videos (creator_id)"
             )
         )
+
+
+def _ensure_visual_media_columns(conn: Connection) -> None:
+    """Migration: add thumbnail_key, content_shape, media_type to videos.
+
+    Idempotent — safe to call on every startup. Pre-existing rows keep
+    NULL for all three columns; new ingest populates them from the
+    downloader outcome.
+    """
+    new_columns = [
+        ("thumbnail_key", "TEXT"),
+        ("content_shape", "VARCHAR(32)"),
+        ("media_type", "VARCHAR(20)"),
+    ]
+    _ALLOWED = {"TEXT", "VARCHAR(32)", "VARCHAR(20)"}
+    _add_columns_if_missing(conn, "videos", new_columns, _ALLOWED)
 
 
 # Re-export a type alias used by tests that want to introspect row maps

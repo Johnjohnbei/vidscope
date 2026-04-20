@@ -45,6 +45,13 @@ regardless of which analyzer produced it. So you can swap providers
 mid-project — old rows keep their old `provider` value and new rows
 get the new one. There's no migration.
 
+**Note on IMAGE and CAROUSEL media types:** For posts with `media_type` of
+`"image"` or `"carousel"`, transcription is skipped (no audio). The `Transcript`
+passed to the analyzer will have an empty `full_text` and zero segments.
+LLM analyzers should handle this gracefully by returning analysis based on text
+extracted from frames (OCR) rather than transcription, or by returning a
+minimal response when no transcript data is available.
+
 ## The default: heuristic
 
 ```bash

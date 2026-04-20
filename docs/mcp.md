@@ -57,7 +57,8 @@ download → transcribe → extract frames → analyze → index.
   "platform_id": "abc123",
   "title": "Video Title",
   "author": "Channel Name",
-  "duration": 19.0
+  "duration": 19.0,
+  "media_type": "video" | "image" | "carousel"
 }
 ```
 
@@ -94,7 +95,7 @@ frame count, analysis.
 ```json
 {
   "found": true,
-  "video": { "id": 1, "platform": "youtube", "title": "...", ... },
+  "video": { "id": 1, "platform": "youtube", "title": "...", "media_type": "video", ... },
   "transcript": { "language": "en", "full_text": "...", "segment_count": 12 },
   "frame_count": 6,
   "analysis": {
@@ -109,6 +110,8 @@ frame count, analysis.
 
 When the video doesn't exist: `{"found": false, "video_id": <id>}`.
 
+**Note:** For IMAGE and CAROUSEL media types, `transcript` will be `null` in the response — these types have no audio to transcribe.
+
 ### `vidscope_list_videos(limit: int = 20)`
 
 List recently ingested videos newest-first.
@@ -118,7 +121,11 @@ List recently ingested videos newest-first.
 ```json
 {
   "total": 3,
-  "videos": [ {...}, {...}, {...} ]
+  "videos": [
+    { "id": 1, "platform": "youtube", "title": "...", "media_type": "video", ... },
+    { "id": 2, "platform": "instagram", "title": "...", "media_type": "image", ... },
+    { "id": 3, "platform": "instagram", "title": "...", "media_type": "carousel", ... }
+  ]
 }
 ```
 

@@ -19,6 +19,7 @@ def _fixture() -> list[ExportRecord]:
             actionability=80.0, content_type="tutorial",
             status="saved", starred=True, notes="nope",
             tags=["idea"], collections=["MyCol"],
+            media_type="video",
             exported_at="2026-04-18T10:00:00+00:00",
         ),
     ]
