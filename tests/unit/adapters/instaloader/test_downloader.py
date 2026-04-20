@@ -160,6 +160,8 @@ def _make_post(
     caption: str | None = "Hello world",
     owner_username: str = "testuser",
     sidecar_nodes: list | None = None,
+    likes: int | None = 10,
+    comments: int | None = 2,
 ) -> MagicMock:
     post = MagicMock()
     post.typename = typename
@@ -168,6 +170,8 @@ def _make_post(
     post.caption = caption
     post.owner_username = owner_username
     post.date_utc = datetime(2026, 4, 20, tzinfo=timezone.utc)
+    post.likes = likes
+    post.comments = comments
     if sidecar_nodes is not None:
         post.get_sidecar_nodes.return_value = iter(sidecar_nodes)
     return post
@@ -276,6 +280,57 @@ class TestInstaLoaderDownloaderDownload:
 
         assert outcome.title is not None
         assert len(outcome.title) == 200
+
+    def test_caption_populates_description(self, tmp_path: Path) -> None:
+        """R060 — full caption goes to outcome.description (not just title)."""
+        caption = "A" * 300  # > 200 chars → title tronqué mais description complète
+        post = _make_post(caption=caption)
+        fake_il = _make_fake_instaloader(post)
+
+        with patch.dict(sys.modules, {"instaloader": fake_il}):
+            outcome = InstaLoaderDownloader().download(
+                "https://www.instagram.com/p/DXJXAQkAbYt/", str(tmp_path)
+            )
+
+        assert outcome.description == caption
+        assert outcome.title == caption[:200]
+
+    def test_null_caption_gives_null_description(self, tmp_path: Path) -> None:
+        post = _make_post(caption=None)
+        fake_il = _make_fake_instaloader(post)
+
+        with patch.dict(sys.modules, {"instaloader": fake_il}):
+            outcome = InstaLoaderDownloader().download(
+                "https://www.instagram.com/p/DXJXAQkAbYt/", str(tmp_path)
+            )
+
+        assert outcome.description is None
+        assert outcome.title is None
+
+    def test_engagement_stats_populated(self, tmp_path: Path) -> None:
+        """R061 — like_count / comment_count extracted from Post."""
+        post = _make_post(likes=123, comments=45)
+        fake_il = _make_fake_instaloader(post)
+
+        with patch.dict(sys.modules, {"instaloader": fake_il}):
+            outcome = InstaLoaderDownloader().download(
+                "https://www.instagram.com/p/DXJXAQkAbYt/", str(tmp_path)
+            )
+
+        assert outcome.like_count == 123
+        assert outcome.comment_count == 45
+
+    def test_none_likes_gives_none_engagement(self, tmp_path: Path) -> None:
+        post = _make_post(likes=None, comments=None)
+        fake_il = _make_fake_instaloader(post)
+
+        with patch.dict(sys.modules, {"instaloader": fake_il}):
+            outcome = InstaLoaderDownloader().download(
+                "https://www.instagram.com/p/DXJXAQkAbYt/", str(tmp_path)
+            )
+
+        assert outcome.like_count is None
+        assert outcome.comment_count is None
 
 
 # ---------------------------------------------------------------------------
