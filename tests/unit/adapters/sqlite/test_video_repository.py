@@ -256,3 +256,44 @@ class TestMediaTypeRoundTrip:
                 text("SELECT media_type FROM videos WHERE platform_id = 'mt_row'")
             ).scalar()
         assert raw == "image"
+
+
+# ---------------------------------------------------------------------------
+# M012/S01 — description round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestDescriptionRoundTrip:
+    """R060 — videos.description persists via upsert + get."""
+
+    def test_description_round_trips(self, engine: Engine) -> None:
+        with SqliteUnitOfWork(engine) as uow:
+            saved = uow.videos.add(
+                _sample_video(
+                    platform_id=PlatformId("p_99999"),
+                    platform=Platform.INSTAGRAM,
+                    url="https://instagram.com/p/99999/",
+                    description="Caption avec accents éàù",
+                )
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            reloaded = uow.videos.get(saved.id)  # type: ignore[arg-type]
+            assert reloaded is not None
+            assert reloaded.description == "Caption avec accents éàù"
+
+    def test_null_description_persists_as_none(self, engine: Engine) -> None:
+        with SqliteUnitOfWork(engine) as uow:
+            saved = uow.videos.add(
+                _sample_video(
+                    platform_id=PlatformId("p_99998"),
+                    platform=Platform.INSTAGRAM,
+                    url="https://instagram.com/p/99998/",
+                    description=None,
+                )
+            )
+
+        with SqliteUnitOfWork(engine) as uow:
+            reloaded = uow.videos.get(saved.id)  # type: ignore[arg-type]
+            assert reloaded is not None
+            assert reloaded.description is None
