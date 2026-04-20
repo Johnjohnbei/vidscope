@@ -4,7 +4,7 @@
 
 VidScope is a personal video-intelligence tool. Given a URL to a public video on Instagram, TikTok, or YouTube, it downloads the media locally, transcribes the audio, extracts representative frames, produces a structured analysis of the content, and stores everything in a searchable local database. It exposes both a CLI (`vidscope add <url>`, `vidscope search <query>`) and — in later milestones — an MCP server so an AI agent can query and enrich the library during conversation.
 
-M001 (single-URL pipeline), M002 (MCP server + related-video suggestions), M003 (account monitoring + scheduled refresh), M004 (pluggable LLM analyzers), and M005 (cookies UX improvements) are complete. **All planned milestones are done.**
+M001–M011 are complete (pipeline, MCP, monitoring, LLM analyzers, cookies UX, creator entities, rich metadata, visual intelligence, engagement signals, scoring+taxonomy, veille workflow). **M012 is active.**
 
 ## Core Value
 
@@ -35,7 +35,17 @@ A single command turns a video URL into a searchable, analyzable record on the l
 
 **Cookies feature:** users export `cookies.txt` from a logged-in browser once, then `vidscope cookies set <path>` installs it after format validation, `vidscope cookies test` verifies it authenticates against Instagram via a metadata-only probe (no real ingest required), and `vidscope add` surfaces a typed `CookieAuthError` with actionable remediation when the session expires. Full guide in `docs/cookies.md`.
 
-**Next:** All 5 planned milestones are complete. Future work would be additive: semantic search (R026), expanded auth scenarios (Instagram stories, TikTok drafts), or a polish pass on the rich CLI output.
+## Current Milestone: v1.12 — Content Intelligence
+
+**Goal:** Rendre tous les types de contenus ingérés (carousel, reel, vidéo) pleinement exploitables par un agent — métadonnées cohérentes, analyse sur OCR, output MCP enrichi.
+
+**Target features:**
+- Analyzer pipeline pour carousels : fallback sur OCR quand transcript absent
+- Caption/description capturée à l'ingestion pour tous les types (InstaLoader + yt-dlp)
+- Engagement (likes, comments) peuplé à l'ingestion, pas seulement via refresh-stats
+- MCP `get_video` enrichi : description, engagement, OCR summary pour carousels
+- Topics heuristiques nettoyés (stopwords FR/EN filtrés)
+- Audit dead code + cohérence inter-adapters (InstaLoader ↔ yt-dlp ↔ MCP)
 
 ## Architecture / Key Patterns
 

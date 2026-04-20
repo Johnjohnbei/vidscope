@@ -1,8 +1,8 @@
 # GSD State
 
 **Last Completed Milestone:** M011 (complete — S01/S02/S03/S04 all done, 36/36 verified)
-**Active Slice:** None (M011 complete)
-**Phase:** M011
+**Active Slice:** None (M012 starting)
+**Phase:** Not started — M012 v1.12 Content Intelligence
 **Requirements Status:** R056 (tracking+notes — S01), R057 (tags+collections — S02), R058 (facetted search — S03), R059 (export JSON/MD/CSV — S04)
 
 ## Milestone Registry

@@ -261,3 +261,70 @@ This file is the explicit capability and coverage contract for the project.
 - Mapped to slices: 12
 - Validated: 4 (R021, R022, R024, R025)
 - Unmapped active requirements: 0
+
+---
+
+## M012 — Content Intelligence (v1.12)
+
+### R060 — Pour tout contenu ingéré (carousel, image, reel, vidéo), la description/caption du post est capturée et stockée dans `videos.description` au moment de l'ingestion.
+- Class: core-capability
+- Status: active
+- Description: InstaLoaderDownloader mappe `post.caption` → `description`. YtdlpDownloader mappe `info["description"]` → `description` quand disponible. Le champ existe en DB mais reste null aujourd'hui pour les deux types.
+- Why it matters: La caption contient hashtags, mentions, liens, contexte éditorial — c'est la donnée primaire que le créateur a choisie. Sans elle, un carousel est muet pour un agent.
+- Source: user
+- Primary owning slice: M012/S01
+- Supporting slices: none
+
+### R061 — L'engagement initial (like_count, comment_count) est peuplé à l'ingestion depuis le downloader quand la plateforme le fournit, créant un enregistrement video_stats sans nécessiter `vidscope refresh-stats`.
+- Class: core-capability
+- Status: active
+- Description: InstaLoaderDownloader : `post.likes` → `like_count`, `post.comments` → `comment_count`. YtdlpDownloader : `info.get("like_count")`, `info.get("comment_count")`. Crée une ligne video_stats si au moins une valeur non-null.
+- Why it matters: Aujourd'hui `vidscope show` affiche "Aucune stat capturée" pour tout contenu fraîchement ingéré. L'engagement est disponible à l'ingestion mais ignoré.
+- Source: user
+- Primary owning slice: M012/S01
+- Supporting slices: none
+
+### R062 — Pour les contenus image/carousel (sans audio), l'AnalyzeStage produit une analyse en utilisant le texte OCR (frame_texts) comme substitut du transcript.
+- Class: core-capability
+- Status: active
+- Description: Quand `transcript is None` ET `frame_texts` existent, l'AnalyzeStage concatène les textes OCR et les passe à l'analyzer. Le résultat analysis inclut provider, keywords, topics, score, summary basés sur l'OCR. `analysis: null` ne doit plus apparaître pour un carousel ayant du texte extracté.
+- Why it matters: Le carousel "Claude skills for Architects!" a 848 blocs OCR et `analysis: null`. Un agent interrogeant get_video voit un contenu opaque alors que toute l'intelligence est là, en DB, non utilisée.
+- Source: user
+- Primary owning slice: M012/S02
+- Supporting slices: none
+
+### R063 — L'analyse heuristique filtre les stopwords français et anglais des keywords et topics (listes d'au moins 100 mots chacune).
+- Class: quality-attribute
+- Status: active
+- Description: Les topics actuels ("c'est", "chemins", "veux") sont des mots grammaticaux sans valeur sémantique. Un filtre stopwords FR+EN doit les exclure avant le tri fréquentiel. Résultat attendu : topics = termes significatifs du domaine (ex. "terminal", "claude", "agent").
+- Why it matters: L'analyzer heuristique est le provider par défaut (zero cost). Des topics vides de sens dégradent search + suggest_related + MCP analysis.
+- Source: user
+- Primary owning slice: M012/S02
+- Supporting slices: none
+
+### R064 — `vidscope_get_video` inclut `description` et `latest_engagement` (like_count, comment_count depuis video_stats) dans sa réponse MCP.
+- Class: integration
+- Status: active
+- Description: Le dict de réponse actuel de vidscope_get_video n'inclut pas `description` ni les compteurs d'engagement. Ajouter ces champs (null si absents) pour que l'agent ait un portrait complet en un appel.
+- Why it matters: Un agent doit aujourd'hui faire 2-3 appels (get_video + trending/stats) pour avoir le portrait complet. Réduire la friction agent est le but du MCP.
+- Source: user
+- Primary owning slice: M012/S03
+- Supporting slices: none
+
+### R065 — Pour les carousels, `vidscope_get_video` inclut un champ `ocr_preview` (les 5 premiers blocs OCR concaténés) et signale que `vidscope_get_frame_texts` expose le contenu complet.
+- Class: integration
+- Status: active
+- Description: Un agent recevant un carousel voit aujourd'hui transcript=null, analysis=null. Après R062, analysis sera peuplée. En complément, ocr_preview donne un aperçu textuel immédiat sans 2e appel.
+- Why it matters: Cohérence de l'expérience agent : carousel et reel doivent offrir un niveau de lisibilité comparable en un seul appel MCP.
+- Source: user
+- Primary owning slice: M012/S03
+- Supporting slices: none
+
+### R066 — Audit et suppression du dead code entre InstaLoaderDownloader, YtdlpDownloader, FallbackDownloader et le pipeline : incohérences dans les champs IngestOutcome mappés, logique dupliquée, simplifications identifiées appliquées.
+- Class: quality-attribute
+- Status: active
+- Description: L'ajout de InstaLoader + FallbackDownloader en M011-session a introduit des chemins non couverts (probe non implémenté, list_channel_videos raise immédiat). Un audit cross-adapter identifie les champs manquants, les chemins morts, et les patterns à unifier.
+- Why it matters: Le code hérité d'un sprint rapide accumule de la dette silencieuse. L'audit garantit que les nouveaux adapters sont aussi solides que les anciens.
+- Source: user
+- Primary owning slice: M012/S04
+- Supporting slices: none
