@@ -1594,3 +1594,71 @@ class TestInfoToOutcomeM007:
         assert outcome.mentions == ()
         assert outcome.music_track is None
         assert outcome.music_artist is None
+
+
+class TestInfoToOutcomeEngagement:
+    """R061 — yt-dlp info_dict engagement counters flow into IngestOutcome."""
+
+    def _make_info(self, tmp_path: Path, **extra: object) -> dict[str, Any]:
+        """Build a minimal valid info dict with an actual file on disk."""
+        dest = tmp_path / "abc.mp4"
+        dest.write_bytes(b"fake")
+        base: dict[str, Any] = {
+            "id": "abc",
+            "extractor_key": "Youtube",
+            "webpage_url": "https://www.youtube.com/watch?v=abc",
+            "title": "Test",
+            "uploader": "Channel",
+            "duration": 10.0,
+            "requested_downloads": [{"filepath": str(dest)}],
+        }
+        base.update(extra)
+        return base
+
+    def test_like_count_extracted_from_info(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(tmp_path, like_count=500, comment_count=30)
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.like_count == 500
+        assert outcome.comment_count == 30
+
+    def test_missing_engagement_gives_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(tmp_path)  # pas de like_count ni comment_count
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.like_count is None
+        assert outcome.comment_count is None
+
+    def test_null_engagement_gives_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        info = self._make_info(tmp_path, like_count=None, comment_count=None)
+        _install_fake(
+            monkeypatch,
+            lambda *_a, **_k: FakeYoutubeDL(
+                info=info, touch_file=Path(str(tmp_path / "abc.mp4"))
+            ),
+        )
+        outcome = YtdlpDownloader().download(
+            "https://www.youtube.com/watch?v=abc", str(tmp_path)
+        )
+        assert outcome.like_count is None
+        assert outcome.comment_count is None
