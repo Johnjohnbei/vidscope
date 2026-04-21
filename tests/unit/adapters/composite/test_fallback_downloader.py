@@ -1,4 +1,4 @@
-"""Tests for FallbackDownloader."""
+"""Tests for FallbackDownloader and PlatformRoutingDownloader."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from vidscope.adapters.composite import FallbackDownloader
+from vidscope.adapters.composite import FallbackDownloader, PlatformRoutingDownloader
 from vidscope.domain import IngestError, MediaType, Platform, PlatformId
 from vidscope.ports import IngestOutcome, ProbeResult, ProbeStatus
 
@@ -205,3 +205,142 @@ class TestDelegation:
         assert result is probe
         primary.probe.assert_called_once_with("http://x")
         fallback.probe.assert_not_called()
+
+
+# ===========================================================================
+# PlatformRoutingDownloader
+# ===========================================================================
+
+_INSTAGRAM_URL = "https://www.instagram.com/p/ABC123/"
+_YOUTUBE_URL = "https://www.youtube.com/watch?v=XYZ"
+_TIKTOK_URL = "https://www.tiktok.com/@user/video/123"
+
+
+class TestPlatformRoutingDownloaderInstagram:
+    """Instagram URLs → InstaLoaderDownloader first."""
+
+    def test_instagram_calls_instaloader_first(self, tmp_path) -> None:
+        result = _outcome(media_path="/insta.jpg")
+        instaloader = _make_downloader(download_return=result)
+        ytdlp = _make_downloader()
+
+        r = PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).download(
+            _INSTAGRAM_URL, str(tmp_path)
+        )
+
+        assert r is result
+        instaloader.download.assert_called_once_with(_INSTAGRAM_URL, str(tmp_path))
+        ytdlp.download.assert_not_called()
+
+    def test_instagram_reel_falls_back_to_ytdlp(self, tmp_path) -> None:
+        # InstaLoaderDownloader raises "no downloadable images found" for pure Reels.
+        reel_result = _outcome(media_path="/reel.mp4", media_type=MediaType.VIDEO)
+        instaloader = _make_downloader(
+            download_raise=IngestError("no downloadable images found for post 'ABC123'", retryable=False)
+        )
+        ytdlp = _make_downloader(download_return=reel_result)
+
+        r = PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).download(
+            _INSTAGRAM_URL, str(tmp_path)
+        )
+
+        assert r is reel_result
+        ytdlp.download.assert_called_once_with(_INSTAGRAM_URL, str(tmp_path))
+
+    def test_instagram_fallback_case_insensitive(self, tmp_path) -> None:
+        instaloader = _make_downloader(
+            download_raise=IngestError("No Downloadable Images Found", retryable=False)
+        )
+        ytdlp = _make_downloader(download_return=_outcome())
+
+        PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).download(
+            _INSTAGRAM_URL, str(tmp_path)
+        )
+
+        ytdlp.download.assert_called_once()
+
+    def test_instagram_retryable_error_reraised(self, tmp_path) -> None:
+        exc = IngestError("no downloadable images found", retryable=True)
+        instaloader = _make_downloader(download_raise=exc)
+        ytdlp = _make_downloader()
+
+        with pytest.raises(IngestError) as info:
+            PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).download(
+                _INSTAGRAM_URL, str(tmp_path)
+            )
+
+        assert info.value is exc
+        ytdlp.download.assert_not_called()
+
+    def test_instagram_non_matching_error_reraised(self, tmp_path) -> None:
+        exc = IngestError("rate limit hit", retryable=False)
+        instaloader = _make_downloader(download_raise=exc)
+        ytdlp = _make_downloader()
+
+        with pytest.raises(IngestError) as info:
+            PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).download(
+                _INSTAGRAM_URL, str(tmp_path)
+            )
+
+        assert info.value is exc
+        ytdlp.download.assert_not_called()
+
+
+class TestPlatformRoutingDownloaderNonInstagram:
+    """Non-Instagram URLs → YtdlpDownloader directly."""
+
+    def test_youtube_calls_ytdlp_directly(self, tmp_path) -> None:
+        result = _outcome(platform=Platform.YOUTUBE, media_path="/yt.mp4")
+        ytdlp = _make_downloader(download_return=result)
+        instaloader = _make_downloader()
+
+        r = PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).download(
+            _YOUTUBE_URL, str(tmp_path)
+        )
+
+        assert r is result
+        ytdlp.download.assert_called_once_with(_YOUTUBE_URL, str(tmp_path))
+        instaloader.download.assert_not_called()
+
+    def test_tiktok_calls_ytdlp_directly(self, tmp_path) -> None:
+        ytdlp = _make_downloader(download_return=_outcome())
+        instaloader = _make_downloader()
+
+        PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).download(
+            _TIKTOK_URL, str(tmp_path)
+        )
+
+        ytdlp.download.assert_called_once()
+        instaloader.download.assert_not_called()
+
+
+class TestPlatformRoutingDownloaderDelegation:
+    """list_channel_videos and probe always delegate to yt-dlp."""
+
+    def test_list_channel_videos_delegates_to_ytdlp(self) -> None:
+        from vidscope.ports import ChannelEntry
+
+        entries = [ChannelEntry(platform_id=PlatformId("v1"), url="http://v1")]
+        ytdlp = _make_downloader(list_return=entries)
+        instaloader = _make_downloader()
+
+        result = PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).list_channel_videos(
+            "http://channel", limit=3
+        )
+
+        assert result is entries
+        ytdlp.list_channel_videos.assert_called_once_with("http://channel", limit=3)
+        instaloader.list_channel_videos.assert_not_called()
+
+    def test_probe_delegates_to_ytdlp(self) -> None:
+        probe = ProbeResult(status=ProbeStatus.OK, url="http://x", detail="fine")
+        ytdlp = _make_downloader(probe_return=probe)
+        instaloader = _make_downloader()
+
+        result = PlatformRoutingDownloader(ytdlp=ytdlp, instaloader=instaloader).probe(
+            _INSTAGRAM_URL
+        )
+
+        assert result is probe
+        ytdlp.probe.assert_called_once_with(_INSTAGRAM_URL)
+        instaloader.probe.assert_not_called()

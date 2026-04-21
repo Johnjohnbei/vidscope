@@ -51,7 +51,7 @@ from vidscope.adapters.sqlite.unit_of_work import SqliteUnitOfWork
 from vidscope.adapters.text import RegexLinkExtractor
 from vidscope.adapters.vision import HaarcascadeFaceCounter, RapidOcrEngine
 from vidscope.adapters.whisper import FasterWhisperTranscriber
-from vidscope.adapters.composite import FallbackDownloader
+from vidscope.adapters.composite import PlatformRoutingDownloader
 from vidscope.adapters.instaloader import InstaLoaderDownloader
 from vidscope.adapters.ytdlp import YtdlpDownloader, YtdlpStatsProbe
 from vidscope.infrastructure.analyzer_registry import build_analyzer
@@ -191,9 +191,9 @@ def build_container(config: Config | None = None) -> Container:
     # IngestError so the operator sees the problem at startup, not on
     # the first ingest. When cookies_file is None (the default) the
     # downloader behaves exactly as it did before S07.
-    downloader = FallbackDownloader(
-        primary=YtdlpDownloader(cookies_file=resolved_config.cookies_file),
-        fallback=InstaLoaderDownloader(cookies_file=resolved_config.cookies_file),
+    downloader = PlatformRoutingDownloader(
+        ytdlp=YtdlpDownloader(cookies_file=resolved_config.cookies_file),
+        instaloader=InstaLoaderDownloader(cookies_file=resolved_config.cookies_file),
     )
     stats_probe: StatsProbe = YtdlpStatsProbe(cookies_file=resolved_config.cookies_file)
     # StatsStage is standalone — NOT added to pipeline_runner.stages (anti-pitfall M009)
