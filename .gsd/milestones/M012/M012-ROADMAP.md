@@ -50,7 +50,8 @@
   2. Pour un carousel, `vidscope_get_video` retourne un champ `ocr_preview` contenant les 5 premiers blocs OCR concaténés, plus une indication que `vidscope_get_frame_texts` expose le contenu complet
   3. Pour un reel ou une vidéo non-carousel, `ocr_preview` est absent ou null — pas de bruit inutile dans la réponse
   4. Un agent peut déterminer le type de contenu et son richesse informative en un seul appel MCP, sans appel supplémentaire pour les métadonnées de base
-**Plans**: TBD
+**Plans**: 1 plan
+  - [ ] M012-S03-PLAN.md — _video_to_dict description + vidscope_get_video latest_engagement + ocr_preview carousel (TBD)
 
 ### M012/S04: Audit dead code inter-adapters
 **Goal**: Les trois adapters downloader (InstaLoaderDownloader, YtdlpDownloader, FallbackDownloader) sont cohérents dans leur contrat, sans chemins morts ni logique dupliquée non justifiée
@@ -71,7 +72,7 @@
 |-------|----------------|--------|-----------|
 | M012/S01 — Metadata ingestion | 1/1 | Complete | 2026-04-20 |
 | M012/S02 — Analyze carousel | 1/1 | Complete | 2026-04-21 |
-| M012/S03 — MCP enrichi | 0/? | Not started | - |
+| M012/S03 — MCP enrichi | 0/1 | Planned | - |
 | M012/S04 — Audit adapters | 0/? | Not started | - |
 
 ---

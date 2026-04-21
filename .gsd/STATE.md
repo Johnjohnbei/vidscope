@@ -1,7 +1,7 @@
 # GSD State
 
 **Last Completed Milestone:** M011 (complete — S01/S02/S03/S04 all done, 36/36 verified)
-**Active Slice:** M012/S03 — MCP output enrichi
+**Active Slice:** M012/S03 — MCP output enrichi (planned, ready to execute)
 **Phase:** M012 v1.12 Content Intelligence — S02 complete (2026-04-21)
 **Requirements Status:** R060 ✅, R061 ✅ (M012/S01) | R062 ✅, R063 ✅ (M012/S02 complete 2026-04-21) | R064, R065 (M012/S03 pending) | R066 (M012/S04 pending)
 
