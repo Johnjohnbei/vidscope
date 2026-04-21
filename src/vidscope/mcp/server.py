@@ -72,6 +72,7 @@ def _video_to_dict(video: Video) -> dict[str, Any]:
         "url": video.url,
         "title": video.title,
         "author": video.author,
+        "description": video.description,
         "duration": video.duration,
         "upload_date": video.upload_date,
         "view_count": video.view_count,
@@ -239,13 +240,40 @@ def build_mcp_server(container: Container) -> FastMCP:
                 "summary": result.analysis.summary,
             }
 
-        return {
+        # R064 — latest_engagement: null if no stats, dict otherwise (D-01)
+        latest_engagement: dict[str, Any] | None = None
+        if result.latest_stats is not None:
+            s = result.latest_stats
+            latest_engagement = {
+                "view_count": s.view_count,
+                "like_count": s.like_count,
+                "comment_count": s.comment_count,
+                "repost_count": s.repost_count,
+                "save_count": s.save_count,
+                "captured_at": s.captured_at.isoformat(),
+            }
+
+        response: dict[str, Any] = {
             "found": True,
             "video": video_dict,
             "transcript": transcript_dict,
             "frame_count": len(result.frames),
             "analysis": analysis_dict,
+            "latest_engagement": latest_engagement,
         }
+
+        # R065 — ocr_preview: carousel only; absent (not null) for non-carousels (D-03, D-04)
+        if result.video.content_shape == "carousel" and result.frame_texts:
+            sorted_fts = sorted(
+                result.frame_texts,
+                key=lambda ft: (ft.frame_id, ft.id or 0),
+            )
+            response["ocr_preview"] = "\n".join(
+                ft.text for ft in sorted_fts[:5]
+            )
+            response["ocr_full_tool"] = "vidscope_get_frame_texts"
+
+        return response
 
     @mcp.tool()
     def vidscope_list_videos(limit: int = 20) -> dict[str, Any]:

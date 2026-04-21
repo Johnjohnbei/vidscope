@@ -10,13 +10,15 @@ repository layer to exercise the MCP tool → use case → DB path.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from vidscope.domain import (
     Analysis,
+    Frame,
+    FrameText,
     Language,
     PipelineRun,
     Platform,
@@ -27,6 +29,7 @@ from vidscope.domain import (
     TranscriptSegment,
     Video,
     VideoId,
+    VideoStats,
 )
 from vidscope.infrastructure.config import reset_config_cache
 from vidscope.infrastructure.container import Container, build_container
@@ -396,6 +399,226 @@ def _seed_related_library(container: Container) -> tuple[VideoId, VideoId]:
         )
 
         return source.id, matching.id
+
+
+def _seed_video_with_description(container: Container) -> tuple[VideoId, str]:
+    """Seed a video with a description and return (video_id, description)."""
+    description = "A test video with a meaningful caption"
+    with container.unit_of_work() as uow:
+        video = uow.videos.upsert_by_platform_id(
+            Video(
+                platform=Platform.YOUTUBE,
+                platform_id=PlatformId("desc-test"),
+                url="https://www.youtube.com/shorts/desc-test",
+                title="Description Test Video",
+                description=description,
+                media_key="videos/youtube/desc-test/media.mp4",
+            )
+        )
+        assert video.id is not None
+        return video.id, description
+
+
+def _seed_video_stats(container: Container, video_id: VideoId) -> VideoStats:
+    """Append a VideoStats row for the given video and return it."""
+    stats = VideoStats(
+        video_id=video_id,
+        captured_at=datetime(2026, 4, 21, 10, 0, 0, tzinfo=UTC),
+        like_count=42,
+        comment_count=7,
+        view_count=1000,
+        repost_count=3,
+        save_count=15,
+    )
+    with container.unit_of_work() as uow:
+        return uow.video_stats.append(stats)
+
+
+def _seed_carousel_video(
+    container: Container,
+    *,
+    frame_texts: tuple[str, ...] = ("First block", "Second block"),
+) -> VideoId:
+    """Seed a carousel video with FrameText rows and return its VideoId."""
+    with container.unit_of_work() as uow:
+        video = uow.videos.upsert_by_platform_id(
+            Video(
+                platform=Platform.INSTAGRAM,
+                platform_id=PlatformId("carousel-mcp-test"),
+                url="https://www.instagram.com/p/carousel-mcp-test/",
+                title="Carousel MCP Test",
+                content_shape="carousel",
+                media_key="videos/instagram/carousel-mcp-test/items/0000.jpg",
+            )
+        )
+        assert video.id is not None
+        frames = uow.frames.add_many(
+            [
+                Frame(
+                    video_id=video.id,
+                    image_key=f"videos/instagram/carousel-mcp-test/items/{i:04d}.jpg",
+                    timestamp_ms=i * 1000,
+                    is_keyframe=True,
+                )
+                for i in range(len(frame_texts))
+            ]
+        )
+        for frame, text in zip(frames, frame_texts):
+            assert frame.id is not None
+            uow.frame_texts.add_many_for_frame(
+                frame.id,
+                video.id,
+                [
+                    FrameText(
+                        video_id=video.id,
+                        frame_id=frame.id,
+                        text=text,
+                        confidence=0.95,
+                    )
+                ],
+            )
+        return video.id
+
+
+# ---------------------------------------------------------------------------
+# vidscope_get_video — R064 (description + latest_engagement)
+# ---------------------------------------------------------------------------
+
+
+class TestVidscopeGetVideoR064:
+    """R064 — vidscope_get_video exposes description and latest_engagement."""
+
+    def test_get_video_includes_description_in_video_dict(
+        self, sandboxed_container: Container
+    ) -> None:
+        """description field is present (null) even when not seeded."""
+        video_id = _seed_library(sandboxed_container)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        assert result["found"] is True
+        assert "description" in result["video"]
+
+    def test_get_video_description_populated_when_seeded(
+        self, sandboxed_container: Container
+    ) -> None:
+        video_id, expected_desc = _seed_video_with_description(sandboxed_container)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        assert result["found"] is True
+        assert result["video"]["description"] == expected_desc
+
+    def test_list_videos_includes_description(
+        self, sandboxed_container: Container
+    ) -> None:
+        """D-05 — description exposed via _video_to_dict, available in list_videos too."""
+        _seed_video_with_description(sandboxed_container)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_list_videos", {"limit": 10})
+        assert result["total"] >= 1
+        video = result["videos"][0]
+        assert "description" in video
+
+    def test_get_video_latest_engagement_null_when_no_stats(
+        self, sandboxed_container: Container
+    ) -> None:
+        video_id = _seed_library(sandboxed_container)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        assert result["found"] is True
+        assert "latest_engagement" in result
+        assert result["latest_engagement"] is None
+
+    def test_get_video_latest_engagement_populated_when_stats_seeded(
+        self, sandboxed_container: Container
+    ) -> None:
+        video_id = _seed_library(sandboxed_container)
+        _seed_video_stats(sandboxed_container, video_id)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        assert result["found"] is True
+        eng = result["latest_engagement"]
+        assert eng is not None
+        assert eng["like_count"] == 42
+        assert eng["comment_count"] == 7
+        assert eng["view_count"] == 1000
+        assert eng["repost_count"] == 3
+        assert eng["save_count"] == 15
+        assert isinstance(eng["captured_at"], str)
+        assert "2026-04-21" in eng["captured_at"]
+
+    def test_get_video_latest_engagement_has_all_required_keys(
+        self, sandboxed_container: Container
+    ) -> None:
+        """D-01 — all 6 keys must be present when stats exist."""
+        video_id = _seed_library(sandboxed_container)
+        _seed_video_stats(sandboxed_container, video_id)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        eng = result["latest_engagement"]
+        assert eng is not None
+        for key in ("view_count", "like_count", "comment_count",
+                    "repost_count", "save_count", "captured_at"):
+            assert key in eng, f"missing key: {key}"
+
+
+# ---------------------------------------------------------------------------
+# vidscope_get_video — R065 (ocr_preview + ocr_full_tool for carousels)
+# ---------------------------------------------------------------------------
+
+
+class TestVidscopeGetVideoR065:
+    """R065 — vidscope_get_video exposes ocr_preview for carousels only."""
+
+    def test_carousel_includes_ocr_preview_and_ocr_full_tool(
+        self, sandboxed_container: Container
+    ) -> None:
+        video_id = _seed_carousel_video(
+            sandboxed_container,
+            frame_texts=("Build in public. 5 tips", "Slide 2: workflow"),
+        )
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        assert result["found"] is True
+        assert "ocr_preview" in result
+        assert "ocr_full_tool" in result
+        assert result["ocr_full_tool"] == "vidscope_get_frame_texts"
+
+    def test_carousel_ocr_preview_contains_first_blocks(
+        self, sandboxed_container: Container
+    ) -> None:
+        texts = ("Block 1", "Block 2", "Block 3")
+        video_id = _seed_carousel_video(sandboxed_container, frame_texts=texts)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        preview = result["ocr_preview"]
+        assert "Block 1" in preview
+        assert "Block 2" in preview
+        assert "Block 3" in preview
+
+    def test_carousel_ocr_preview_capped_at_five_blocks(
+        self, sandboxed_container: Container
+    ) -> None:
+        """D-06 — at most 5 blocks in ocr_preview."""
+        texts = ("A", "B", "C", "D", "E", "F", "G")
+        video_id = _seed_carousel_video(sandboxed_container, frame_texts=texts)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        preview = result["ocr_preview"]
+        blocks_in_preview = preview.split("\n")
+        assert len(blocks_in_preview) <= 5
+        assert "F" not in blocks_in_preview
+        assert "G" not in blocks_in_preview
+
+    def test_non_carousel_has_no_ocr_preview_or_ocr_full_tool(
+        self, sandboxed_container: Container
+    ) -> None:
+        """D-03 — ocr_preview and ocr_full_tool ABSENT (not null) for non-carousel."""
+        video_id = _seed_library(sandboxed_container)
+        server = build_mcp_server(sandboxed_container)
+        result = _call_tool(server, "vidscope_get_video", {"video_id": int(video_id)})
+        assert result["found"] is True
+        assert "ocr_preview" not in result
+        assert "ocr_full_tool" not in result
 
 
 class TestVidscopeSuggestRelated:
