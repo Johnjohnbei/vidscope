@@ -9,8 +9,8 @@
 ## Phases
 
 - [x] **M012/S01: Metadata cohérence à l'ingestion** — Caption et engagement initial capturés dès l'ingestion dans InstaLoaderDownloader et YtdlpDownloader (2026-04-20)
-- [ ] **M012/S02: Analyze intelligence carousel** — AnalyzeStage avec fallback OCR + stopwords FR/EN dans HeuristicAnalyzer
-- [ ] **M012/S03: MCP output enrichi** — vidscope_get_video expose description, engagement et ocr_preview pour les carousels
+- [x] **M012/S02: Analyze intelligence carousel** — AnalyzeStage avec fallback OCR + stopwords FR/EN dans HeuristicAnalyzer (2026-04-21)
+- [x] **M012/S03: MCP output enrichi** — vidscope_get_video expose description, engagement et ocr_preview pour les carousels (2026-04-21)
 - [ ] **M012/S04: Audit dead code inter-adapters** — Review cross-adapter InstaLoader/yt-dlp/Fallback, suppression de la dette silencieuse
 
 ---
@@ -51,7 +51,7 @@
   3. Pour un reel ou une vidéo non-carousel, `ocr_preview` est absent ou null — pas de bruit inutile dans la réponse
   4. Un agent peut déterminer le type de contenu et son richesse informative en un seul appel MCP, sans appel supplémentaire pour les métadonnées de base
 **Plans**: 1 plan
-  - [ ] M012-S03-PLAN.md — _video_to_dict description + vidscope_get_video latest_engagement + ocr_preview carousel (TBD)
+  - [x] M012-S03-PLAN.md — _video_to_dict description + vidscope_get_video latest_engagement + ocr_preview carousel (2026-04-21)
 
 ### M012/S04: Audit dead code inter-adapters
 **Goal**: Les trois adapters downloader (InstaLoaderDownloader, YtdlpDownloader, FallbackDownloader) sont cohérents dans leur contrat, sans chemins morts ni logique dupliquée non justifiée
