@@ -173,3 +173,58 @@ class TestStubAnalyzer:
         transcript = _transcript("hello")
         result = StubAnalyzer().analyze(transcript)
         assert result.video_id == transcript.video_id
+
+
+# ---------------------------------------------------------------------------
+# R063 — French contractions and conjugated verbs filtered
+# ---------------------------------------------------------------------------
+
+
+class TestHeuristicAnalyzerFrenchStopwordsR063:
+    """R063 — French contractions and conjugated verbs are filtered."""
+
+    def test_french_contractions_excluded_from_keywords(self) -> None:
+        text = (
+            "c'est vraiment intéressant j'ai pensé d'un nouveau concept "
+            "qu'il faut montrer n'est pas évident s'il existe une solution"
+        )
+        result = HeuristicAnalyzer().analyze(
+            _transcript(text, language=Language.FRENCH)
+        )
+        for contracted in ("c'est", "j'ai", "d'un", "qu'il", "n'est", "s'il"):
+            assert contracted not in result.keywords, (
+                f"contracted form {contracted!r} leaked into keywords: "
+                f"{result.keywords}"
+            )
+
+    def test_french_conjugated_verbs_excluded_from_keywords(self) -> None:
+        text = (
+            "je veux vous montrer comment vous peux créer avec ça "
+            "pouvez prendre ce que j'ai pris et mis dans le projet montré"
+        )
+        result = HeuristicAnalyzer().analyze(
+            _transcript(text, language=Language.FRENCH)
+        )
+        for verb in ("veux", "peux", "pouvez", "montrer", "montré", "pris", "mis"):
+            assert verb not in result.keywords, (
+                f"common conjugated verb {verb!r} leaked into keywords: "
+                f"{result.keywords}"
+            )
+
+    def test_claude_skills_carousel_keeps_domain_tokens(self) -> None:
+        """R063 — real-world carousel FR+EN mix yields domain topics only."""
+        text = (
+            "je veux vous montrer c'est un outil puissant pour créer "
+            "des skills Claude dans le terminal avec un agent workflow"
+        )
+        result = HeuristicAnalyzer().analyze(
+            _transcript(text, language=Language.FRENCH)
+        )
+        # Domain tokens retained (lowercase by tokenizer)
+        assert "claude" in result.keywords
+        assert "skills" in result.keywords or "terminal" in result.keywords
+        # Grammar noise excluded
+        for noise in ("veux", "montrer", "c'est", "pour", "des", "dans"):
+            assert noise not in result.keywords, (
+                f"noise {noise!r} leaked into keywords: {result.keywords}"
+            )
