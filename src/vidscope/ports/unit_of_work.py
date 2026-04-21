@@ -32,6 +32,7 @@ from vidscope.ports.repositories import (
     AnalysisRepository,
     CollectionRepository,
     FrameRepository,
+    FrameTextRepository,
     PipelineRunRepository,
     TagRepository,
     TranscriptRepository,
@@ -64,6 +65,7 @@ class UnitOfWork(Protocol):
     videos: VideoRepository
     transcripts: TranscriptRepository
     frames: FrameRepository
+    frame_texts: FrameTextRepository
     analyses: AnalysisRepository
     pipeline_runs: PipelineRunRepository
     search_index: SearchIndex
