@@ -257,3 +257,184 @@ class TestAnalyzeStageMediaTypeR062:
         stage = AnalyzeStage(analyzer=FakeAnalyzer())
         with SqliteUnitOfWork(engine) as uow:
             assert stage.is_satisfied(ctx, uow) is False
+
+
+# ---------------------------------------------------------------------------
+# R062 — execute() OCR fallback
+# ---------------------------------------------------------------------------
+
+
+def _seed_carousel_with_frame_texts(
+    engine: Engine,
+    *,
+    platform_id: str = "carousel_with_ocr",
+    texts: tuple[str, ...] = ("Hello world", "Second block"),
+) -> VideoId:
+    """Insert a Video + 1 Frame + N FrameText rows (no transcript).
+
+    Frames are ordered frame_id ASC (one frame per call), so
+    FrameTextRepository.list_for_video returns them in insertion order.
+    """
+    from vidscope.domain import Frame, FrameText
+
+    with SqliteUnitOfWork(engine) as uow:
+        video = uow.videos.upsert_by_platform_id(
+            Video(
+                platform=Platform.INSTAGRAM,
+                platform_id=PlatformId(platform_id),
+                url=f"https://www.instagram.com/p/{platform_id}/",
+                media_key=f"videos/instagram/{platform_id}/items/0000.jpg",
+            )
+        )
+        assert video.id is not None
+        frame = uow.frames.add_many(
+            [
+                Frame(
+                    video_id=video.id,
+                    image_key=f"videos/instagram/{platform_id}/items/0000.jpg",
+                    timestamp_ms=0,
+                    is_keyframe=True,
+                )
+            ]
+        )[0]
+        assert frame.id is not None
+        uow.frame_texts.add_many_for_frame(
+            frame.id,
+            video.id,
+            [
+                FrameText(
+                    video_id=video.id,
+                    frame_id=frame.id,
+                    text=t,
+                    confidence=0.95,
+                )
+                for t in texts
+            ],
+        )
+        return video.id
+
+
+class TestAnalyzeStageOcrFallback:
+    """R062 — execute() falls back to frame_texts when transcript is None."""
+
+    def test_carousel_with_frame_texts_produces_analysis(
+        self, engine: Engine
+    ) -> None:
+        from vidscope.domain import Language, MediaType
+
+        video_id = _seed_carousel_with_frame_texts(
+            engine,
+            platform_id="carousel_ocr_1",
+            texts=("Claude skills for Architects", "Terminal workflow tip"),
+        )
+        fake = FakeAnalyzer()
+        stage = AnalyzeStage(analyzer=fake)
+        ctx = PipelineContext(
+            source_url="https://www.instagram.com/p/carousel_ocr_1/",
+            video_id=video_id,
+            media_type=MediaType.CAROUSEL,
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        # Analyzer received a synthetic Transcript
+        assert len(fake.calls) == 1
+        received = fake.calls[0]
+        assert received.video_id == video_id
+        assert received.language is Language.UNKNOWN
+        # Concatenation preserves order (frame_id ASC, id ASC)
+        assert "Claude skills for Architects" in received.full_text
+        assert "Terminal workflow tip" in received.full_text
+        assert received.full_text.index("Claude") < received.full_text.index(
+            "Terminal"
+        )
+        assert received.segments == ()
+
+        # Analysis was persisted
+        assert ctx.analysis_id is not None
+        with SqliteUnitOfWork(engine) as uow:
+            persisted = uow.analyses.get_latest_for_video(video_id)
+            assert persisted is not None
+            assert persisted.video_id == video_id
+
+    def test_carousel_without_transcript_and_without_frame_texts_produces_stub(
+        self, engine: Engine
+    ) -> None:
+        """R062 success criteria #4 — no crash, stub Analysis persisted."""
+        from vidscope.adapters.heuristic import HeuristicAnalyzer
+        from vidscope.domain import MediaType
+
+        video_id = _seed_video_without_transcript(
+            engine, platform_id="carousel_empty"
+        )
+        stage = AnalyzeStage(analyzer=HeuristicAnalyzer())
+        ctx = PipelineContext(
+            source_url="https://www.instagram.com/p/carousel_empty/",
+            video_id=video_id,
+            media_type=MediaType.CAROUSEL,
+        )
+
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)  # must not raise
+
+        with SqliteUnitOfWork(engine) as uow:
+            persisted = uow.analyses.get_latest_for_video(video_id)
+            assert persisted is not None
+            assert persisted.score == 0.0
+            assert persisted.summary == "no speech detected"
+            assert persisted.keywords == ()
+
+    def test_ocr_concat_filters_empty_and_whitespace_rows(
+        self, engine: Engine
+    ) -> None:
+        """Empty or whitespace-only FrameText.text rows must be filtered
+        before concatenation to avoid doubled separators."""
+        video_id = _seed_carousel_with_frame_texts(
+            engine,
+            platform_id="carousel_mixed",
+            texts=("Hello", "", "   ", "World"),
+        )
+        fake = FakeAnalyzer()
+        stage = AnalyzeStage(analyzer=fake)
+        ctx = PipelineContext(
+            source_url="x",
+            video_id=video_id,
+        )
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        assert len(fake.calls) == 1
+        got = fake.calls[0].full_text
+        assert got == "Hello World"  # single space, no doubled spacing
+
+    def test_carousel_produces_domain_topics_end_to_end(
+        self, engine: Engine
+    ) -> None:
+        """R062 + R063 integration — real HeuristicAnalyzer returns
+        domain tokens from OCR (no French grammar words, proper nouns kept)."""
+        from vidscope.adapters.heuristic import HeuristicAnalyzer
+
+        video_id = _seed_carousel_with_frame_texts(
+            engine,
+            platform_id="carousel_claude_skills",
+            texts=(
+                "Claude skills for Architects",
+                "Terminal workflow with the agent",
+                "Claude agent builds skills in the terminal",
+            ),
+        )
+        stage = AnalyzeStage(analyzer=HeuristicAnalyzer())
+        ctx = PipelineContext(source_url="x", video_id=video_id)
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+
+        with SqliteUnitOfWork(engine) as uow:
+            persisted = uow.analyses.get_latest_for_video(video_id)
+            assert persisted is not None
+            # Domain tokens present (case-insensitive by tokenizer)
+            assert "claude" in persisted.keywords
+            assert "skills" in persisted.keywords or "agent" in persisted.keywords
+            # Grammar words absent
+            assert "the" not in persisted.keywords
+            assert "with" not in persisted.keywords
