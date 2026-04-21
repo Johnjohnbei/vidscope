@@ -39,7 +39,7 @@
   3. Pour le carousel "Claude skills for Architects!", les topics reflètent le domaine (ex. "terminal", "claude", "agent", "workflow") et non des mots vides
   4. Les carousels sans caption ni OCR ni transcript produisent score=0 et summary approprié — pas de crash ni de comportement indéfini
 **Plans**: 1 plan
-  - [ ] M012-S02-PLAN.md — R062 AnalyzeStage OCR fallback + is_satisfied fix ; R063 FRENCH_STOPWORDS extended (contractions + conjugated verbs)
+  - [x] M012-S02-PLAN.md — R062 AnalyzeStage OCR fallback + is_satisfied fix ; R063 FRENCH_STOPWORDS extended (contractions + conjugated verbs) (2026-04-21)
 
 ### M012/S03: MCP output enrichi
 **Goal**: Un agent obtient un portrait complet d'un contenu (description, engagement, aperçu OCR pour carousels) en un seul appel `vidscope_get_video`
@@ -70,7 +70,7 @@
 | Slice | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | M012/S01 — Metadata ingestion | 1/1 | Complete | 2026-04-20 |
-| M012/S02 — Analyze carousel | 0/1 | Planned | - |
+| M012/S02 — Analyze carousel | 1/1 | Complete | 2026-04-21 |
 | M012/S03 — MCP enrichi | 0/? | Not started | - |
 | M012/S04 — Audit adapters | 0/? | Not started | - |
 
@@ -82,8 +82,8 @@
 |-------------|-------|--------|
 | R060 — description/caption à l'ingestion | M012/S01 | Complete |
 | R061 — engagement initial à l'ingestion | M012/S01 | Complete |
-| R062 — AnalyzeStage fallback OCR carousel | M012/S02 | Planned |
-| R063 — stopwords FR+EN HeuristicAnalyzer | M012/S02 | Planned |
+| R062 — AnalyzeStage fallback OCR carousel | M012/S02 | Complete |
+| R063 — stopwords FR+EN HeuristicAnalyzer | M012/S02 | Complete |
 | R064 — vidscope_get_video enrichi (description + engagement) | M012/S03 | Pending |
 | R065 — vidscope_get_video ocr_preview carousel | M012/S03 | Pending |
 | R066 — audit dead code inter-adapters | M012/S04 | Pending |

@@ -1,9 +1,9 @@
 # GSD State
 
 **Last Completed Milestone:** M011 (complete — S01/S02/S03/S04 all done, 36/36 verified)
-**Active Slice:** M012/S02 — Analyze intelligence carousel
-**Phase:** M012 v1.12 Content Intelligence — S01 complete (2026-04-20)
-**Requirements Status:** R060 ✅, R061 ✅ (M012/S01 complete) | R062, R063 (M012/S02 pending) | R064, R065 (M012/S03 pending) | R066 (M012/S04 pending)
+**Active Slice:** M012/S03 — MCP output enrichi
+**Phase:** M012 v1.12 Content Intelligence — S02 complete (2026-04-21)
+**Requirements Status:** R060 ✅, R061 ✅ (M012/S01) | R062 ✅, R063 ✅ (M012/S02 complete 2026-04-21) | R064, R065 (M012/S03 pending) | R066 (M012/S04 pending)
 
 ## Milestone Registry
 - ✅ **M001:** Pipeline ponctuel end-to-end
@@ -19,6 +19,9 @@
 - ✅ **M011:** Veille workflow layer — tracking, tags, collections, exports (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
 
 ## Recent Decisions
+- **M012/S02:** dataclasses.replace(raw_analysis, video_id) used instead of manual rebind — preserves all M010 additive fields automatically
+- **M012/S02:** Synthetic OCR Transcript stays in-memory (never persisted to transcripts table) to avoid polluting non-audio content
+- **M012/S02:** _FRENCH_CONTRACTIONS (37) + _FRENCH_COMMON_VERBS (74) as separate named frozensets unioned into FRENCH_STOPWORDS
 - **M009/S04:** views_velocity_24h unit is views/HOUR (D-04) — the function name is misleading; min_velocity comparisons are in views/hour not views/day
 - **M009/S04:** rank_candidates_by_delta fetches limit*5 candidates at SQL level so min_velocity Python filter still returns limit results
 - **M009/S04:** MCP tool vidscope_trending uses inline window parser (not CLI import) to avoid violating mcp-has-no-adapters contract
