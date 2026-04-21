@@ -166,35 +166,94 @@ class TestAnalyzeStageErrors:
 
 
 # ---------------------------------------------------------------------------
-# IMAGE / CAROUSEL short-circuit
+# R062 — IMAGE / CAROUSEL OCR fallback
 # ---------------------------------------------------------------------------
 
 
-class TestAnalyzeStageMediaType:
-    """is_satisfied must return True immediately for non-video media types."""
-
-    def test_is_satisfied_returns_true_for_image(
-        self, engine: Engine
-    ) -> None:
-        from vidscope.domain import MediaType
-
-        ctx = PipelineContext(
-            source_url="https://www.instagram.com/p/img1/",
-            media_type=MediaType.IMAGE,
+def _seed_video_without_transcript(
+    engine: Engine,
+    *,
+    platform_id: str = "carousel1",
+    media_key: str = "videos/instagram/carousel1/items/0000.jpg",
+) -> VideoId:
+    """Insert a Video row (no transcript, no analysis, no frame_texts)."""
+    with SqliteUnitOfWork(engine) as uow:
+        video = uow.videos.upsert_by_platform_id(
+            Video(
+                platform=Platform.INSTAGRAM,
+                platform_id=PlatformId(platform_id),
+                url=f"https://www.instagram.com/p/{platform_id}/",
+                media_key=media_key,
+            )
         )
-        stage = AnalyzeStage(analyzer=FakeAnalyzer())
-        with SqliteUnitOfWork(engine) as uow:
-            assert stage.is_satisfied(ctx, uow) is True
+        assert video.id is not None
+        return video.id
 
-    def test_is_satisfied_returns_true_for_carousel(
+
+class TestAnalyzeStageMediaTypeR062:
+    """R062 — is_satisfied no longer short-circuits IMAGE/CAROUSEL.
+
+    Replaces the deleted M010 tests: carousels/images must be analyzed
+    when OCR frame_texts exist, so is_satisfied must actually check
+    whether an Analysis row exists for the video.
+    """
+
+    def test_is_satisfied_false_for_carousel_without_analysis(
         self, engine: Engine
     ) -> None:
         from vidscope.domain import MediaType
 
+        video_id = _seed_video_without_transcript(
+            engine, platform_id="carousel_none"
+        )
         ctx = PipelineContext(
-            source_url="https://www.instagram.com/p/carousel1/",
+            source_url="https://www.instagram.com/p/carousel_none/",
+            video_id=video_id,
             media_type=MediaType.CAROUSEL,
         )
         stage = AnalyzeStage(analyzer=FakeAnalyzer())
         with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is False
+
+    def test_is_satisfied_false_for_image_without_analysis(
+        self, engine: Engine
+    ) -> None:
+        from vidscope.domain import MediaType
+
+        video_id = _seed_video_without_transcript(
+            engine, platform_id="image_none"
+        )
+        ctx = PipelineContext(
+            source_url="https://www.instagram.com/p/image_none/",
+            video_id=video_id,
+            media_type=MediaType.IMAGE,
+        )
+        stage = AnalyzeStage(analyzer=FakeAnalyzer())
+        with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is False
+
+    def test_is_satisfied_true_for_carousel_with_analysis(
+        self, engine: Engine
+    ) -> None:
+        from vidscope.domain import MediaType
+
+        video_id = _seed_video_with_transcript(engine)
+        ctx = PipelineContext(
+            source_url="x",
+            video_id=video_id,
+            media_type=MediaType.CAROUSEL,
+        )
+        stage = AnalyzeStage(analyzer=FakeAnalyzer())
+        # Seed an existing analysis
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)
+        with SqliteUnitOfWork(engine) as uow:
             assert stage.is_satisfied(ctx, uow) is True
+
+    def test_is_satisfied_false_without_video_id(self, engine: Engine) -> None:
+        from vidscope.domain import MediaType
+
+        ctx = PipelineContext(source_url="x", media_type=MediaType.CAROUSEL)
+        stage = AnalyzeStage(analyzer=FakeAnalyzer())
+        with SqliteUnitOfWork(engine) as uow:
+            assert stage.is_satisfied(ctx, uow) is False
