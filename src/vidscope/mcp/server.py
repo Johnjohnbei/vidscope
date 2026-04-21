@@ -263,7 +263,8 @@ def build_mcp_server(container: Container) -> FastMCP:
         }
 
         # R065 — ocr_preview: carousel only; absent (not null) for non-carousels (D-03, D-04)
-        if result.video.content_shape == "carousel" and result.frame_texts:
+        # Use media_type (set at ingest) not content_shape (AI visual analysis — never "carousel")
+        if result.video.media_type.value == "carousel" and result.frame_texts:
             sorted_fts = sorted(
                 result.frame_texts,
                 key=lambda ft: (ft.frame_id, ft.id or 0),

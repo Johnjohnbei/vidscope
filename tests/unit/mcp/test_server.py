@@ -20,6 +20,7 @@ from vidscope.domain import (
     Frame,
     FrameText,
     Language,
+    MediaType,
     PipelineRun,
     Platform,
     PlatformId,
@@ -447,7 +448,7 @@ def _seed_carousel_video(
                 platform_id=PlatformId("carousel-mcp-test"),
                 url="https://www.instagram.com/p/carousel-mcp-test/",
                 title="Carousel MCP Test",
-                content_shape="carousel",
+                media_type=MediaType.CAROUSEL,
                 media_key="videos/instagram/carousel-mcp-test/items/0000.jpg",
             )
         )
