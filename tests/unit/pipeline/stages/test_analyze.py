@@ -143,15 +143,28 @@ class TestAnalyzeStageErrors:
         ):
             stage.execute(ctx, uow)
 
-    def test_missing_transcript_raises(self, engine: Engine) -> None:
-        # Seed a video WITHOUT a transcript
+    def test_missing_transcript_no_ocr_produces_empty_analysis(
+        self, engine: Engine
+    ) -> None:
+        """R062 — when neither transcript nor frame_texts exist, execute()
+        persists a stub Analysis via the analyzer's empty-transcript branch
+        rather than raising AnalysisError."""
+        from vidscope.adapters.heuristic import HeuristicAnalyzer
+
+        # Seed a video WITHOUT a transcript AND without frame_texts
         video_id = _seed_video_with_transcript(engine, with_transcript=False)
         ctx = PipelineContext(source_url="x", video_id=video_id)
-        stage = AnalyzeStage(analyzer=FakeAnalyzer())
-        with SqliteUnitOfWork(engine) as uow, pytest.raises(
-            AnalysisError, match="transcript"
-        ):
-            stage.execute(ctx, uow)
+        stage = AnalyzeStage(analyzer=HeuristicAnalyzer())
+
+        with SqliteUnitOfWork(engine) as uow:
+            stage.execute(ctx, uow)  # must NOT raise
+
+        with SqliteUnitOfWork(engine) as uow:
+            persisted = uow.analyses.get_latest_for_video(video_id)
+            assert persisted is not None
+            assert persisted.score == 0.0
+            assert persisted.summary == "no speech detected"
+            assert persisted.keywords == ()
 
     def test_analyzer_failure_propagates(self, engine: Engine) -> None:
         video_id = _seed_video_with_transcript(engine)
