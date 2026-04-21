@@ -36,7 +36,7 @@ You should see a `mcp` row in green showing the installed version.
 
 ## Registered tools
 
-The server exposes 6 tools. Every tool returns a JSON-serializable
+The server exposes 9 tools. Every tool returns a JSON-serializable
 dict; the MCP client handles serialization.
 
 ### `vidscope_ingest(url: str)`
@@ -88,29 +88,59 @@ Lower rank = better match (BM25 convention).
 ### `vidscope_get_video(video_id: int)`
 
 Return the full record for a video: metadata, transcript summary,
-frame count, analysis.
+frame count, analysis, engagement stats, and OCR preview for carousels.
+One call gives an agent the complete portrait of a piece of content.
 
 **Returns:**
 
 ```json
 {
   "found": true,
-  "video": { "id": 1, "platform": "youtube", "title": "...", "media_type": "video", ... },
-  "transcript": { "language": "en", "full_text": "...", "segment_count": 12 },
-  "frame_count": 6,
+  "video": {
+    "id": 1,
+    "platform": "instagram",
+    "platform_id": "DXJXAQkAbYt",
+    "url": "https://www.instagram.com/p/DXJXAQkAbYt/",
+    "title": "Claude skills for Architects!",
+    "author": "abhinavbwj",
+    "description": "Claude skills for Architects!\n\nLearn how to...",
+    "duration": null,
+    "media_type": "carousel",
+    "content_shape": "mixed",
+    "created_at": "2026-04-21T11:19:23+00:00"
+  },
+  "transcript": null,
+  "frame_count": 17,
   "analysis": {
     "provider": "heuristic",
-    "keywords": ["python", "cooking"],
-    "topics": ["python"],
-    "score": 75.5,
+    "keywords": ["claude", "architect", "design", "skills"],
+    "topics": ["claude", "architect"],
+    "score": 44.3,
     "summary": "..."
-  }
+  },
+  "latest_engagement": {
+    "view_count": null,
+    "like_count": 512,
+    "comment_count": 133,
+    "repost_count": null,
+    "save_count": null,
+    "captured_at": "2026-04-21T11:19:23+00:00"
+  },
+  "ocr_preview": "skills/\narchitect-foundations/\ndesign-theory/\nconcept-design/\nbuilding-programming/",
+  "ocr_full_tool": "vidscope_get_frame_texts"
 }
 ```
 
+**Field notes:**
+
+- `video.description` — post caption; `null` if the platform didn't provide one.
+- `latest_engagement` — most recent stats snapshot; `null` if none have been captured yet. Run `vidscope refresh-stats <id>` to populate.
+- `ocr_preview` — first 5 OCR blocks joined with `\n`. **Present only for `media_type: carousel`**; absent (not `null`) for reels and videos. Use `ocr_full_tool` to get all blocks.
+- `ocr_full_tool` — name of the tool to call for the full OCR dump (`"vidscope_get_frame_texts"`). Present only when `ocr_preview` is present.
+
 When the video doesn't exist: `{"found": false, "video_id": <id>}`.
 
-**Note:** For IMAGE and CAROUSEL media types, `transcript` will be `null` in the response — these types have no audio to transcribe.
+**Note:** For IMAGE and CAROUSEL media types, `transcript` will be `null` — these types have no audio to transcribe.
 
 ### `vidscope_list_videos(limit: int = 20)`
 
@@ -122,12 +152,14 @@ List recently ingested videos newest-first.
 {
   "total": 3,
   "videos": [
-    { "id": 1, "platform": "youtube", "title": "...", "media_type": "video", ... },
-    { "id": 2, "platform": "instagram", "title": "...", "media_type": "image", ... },
-    { "id": 3, "platform": "instagram", "title": "...", "media_type": "carousel", ... }
+    { "id": 1, "platform": "youtube", "title": "...", "description": null, "media_type": "video", ... },
+    { "id": 2, "platform": "instagram", "title": "...", "description": "Caption text", "media_type": "image", ... },
+    { "id": 3, "platform": "instagram", "title": "...", "description": "...", "media_type": "carousel", ... }
   ]
 }
 ```
+
+Each video dict includes `description` (post caption, or `null`).
 
 ### `vidscope_get_status(limit: int = 10)`
 
@@ -284,6 +316,67 @@ tools.
 `docs/cookies.md` for setup. Once `VIDSCOPE_COOKIES_FILE` is
 configured in the shell where `vidscope mcp serve` runs, Instagram
 ingestion works transparently.
+
+## Rate limiting and Instagram safety
+
+Instagram's scraping limits are aggressive, undocumented, and enforced
+at multiple layers (HTTP 429, graphql 403, silent empty responses, and
+session invalidation). This section explains what to watch for and how
+to use VidScope's MCP tools without getting your account flagged.
+
+### What can go wrong
+
+| Behaviour | Cause | Consequence |
+|-----------|-------|-------------|
+| `429 Too Many Requests` | Too many calls in a short window | Temporary cooldown (minutes to hours) |
+| `403 Forbidden` on graphql | Session fingerprinting triggered | Stats/metadata partially missing |
+| Cookies silently stop working | Instagram rotated the session | Next `vidscope_ingest` fails with `auth_required` |
+| Account flagged / checkpoint | Automated scraping detected | Manual re-login required, possible temporary lock |
+
+### Safe usage rules
+
+**Rule 1 — Never let an agent loop `vidscope_ingest` unattended.**
+Each call downloads a video, runs Whisper, and hits Instagram's CDN.
+Ingesting 10+ videos back-to-back in a single agent session is the
+fastest way to trigger a rate limit or fingerprint detection.
+Add a human checkpoint between batches of 3–5 ingests.
+
+**Rule 2 — Space out `vidscope_ingest` calls.**
+The CLI adds a natural delay (pipeline takes 10–30 s per video).
+Through MCP an agent can dispatch calls faster than a human would.
+Instruct the agent to pause between each ingest rather than queuing
+all `vidscope_ingest` calls in parallel.
+
+**Rule 3 — `vidscope_get_frame_texts` is expensive for the agent context, not for Instagram.**
+This tool returns every OCR block for a carousel — potentially 1000+
+entries. Call it only when the agent needs the full text, not as a
+default step after every `vidscope_get_video`. The `ocr_preview`
+field in `vidscope_get_video` covers 90 % of use cases with just
+the first 5 blocks.
+
+**Rule 4 — Refresh stats sparingly.**
+`vidscope refresh-stats` makes a metadata call per video. Running it
+on a large library in one shot (e.g. from a cron or an agent loop)
+generates a burst of requests that Instagram will notice.
+Once per day per video is a safe ceiling.
+
+**Rule 5 — Re-export cookies proactively.**
+Instagram sessions last days to weeks, but fingerprint changes (IP
+switch, user-agent mismatch) can invalidate them sooner. If
+`vidscope_ingest` starts returning `auth_required`, re-export
+cookies before the situation escalates — repeated auth failures can
+accelerate account flagging.
+
+### Example safe agent prompt
+
+```
+Ingest the following 5 reels one at a time. After each ingest, tell
+me the title and engagement before moving to the next. Do not queue
+all ingests at once.
+```
+
+This gives the pipeline time to complete, keeps the agent context
+manageable, and lets you stop at any point.
 
 ## Security notes
 

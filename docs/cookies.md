@@ -217,9 +217,42 @@ vidscope cookies test --url https://www.instagram.com/reel/<your-url>/
 
 ### "rate limit" / 429 errors
 
-yt-dlp doesn't throttle on its own. Wait a few minutes between
-requests, or use a different network. If you're scraping a watchlist
-on a schedule, space out the cron entries.
+yt-dlp doesn't throttle on its own. Instagram's limits are aggressive,
+undocumented, and enforced at multiple layers simultaneously.
+
+**What triggers rate limiting:**
+
+- Ingesting many videos back-to-back (more than ~5 in a few minutes)
+- Running `vidscope refresh-stats` on a large library in one shot
+- Switching IP addresses between calls (VPN toggles look suspicious)
+- Making metadata calls with the same session from multiple processes
+
+**Degrees of consequence — from least to worst:**
+
+| Symptom | What Instagram did | Recovery |
+|---------|-------------------|----------|
+| `429 Too Many Requests` | Temporary HTTP cooldown | Wait 5–15 minutes, retry |
+| `403 Forbidden` on graphql | Session flagged for inspection | Wait 30+ minutes |
+| Cookies silently stop working | Session invalidated | Re-export from browser |
+| "Suspicious activity" checkpoint | Account soft-flagged | Manual re-login in browser, then re-export |
+| Account temporarily locked | Automated scraping detected | Follow Meta's unlock flow; may take 24 h |
+
+**Practical limits to stay safe:**
+
+- Ingest at most 5 videos in a 10-minute window
+- Wait at least 30 seconds between consecutive `vidscope add` calls when
+  running them manually or via a script
+- Run `vidscope refresh-stats` on at most 10–15 videos per session,
+  with a few seconds between each (`--delay` option if available)
+- Avoid scheduling the same session-based task more than once per hour
+
+**If you hit a limit:**
+
+1. Stop all VidScope activity immediately — retrying makes it worse
+2. Wait at least 30 minutes before trying again
+3. Run `vidscope cookies test` to check if the session is still valid
+4. If `auth_required`, re-export cookies from a fresh logged-in browser
+   session and run `vidscope cookies set <path>` again
 
 ### Cookies work in `vidscope cookies test` but `vidscope add` still fails
 
