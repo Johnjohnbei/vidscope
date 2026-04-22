@@ -19,6 +19,8 @@
 - ✅ **M011:** Veille workflow layer — tracking, tags, collections, exports (S01 ✅, S02 ✅, S03 ✅, S04 ✅)
 
 ## Recent Decisions
+- **M012/HOTFIX-XDT (2026-04-22):** _normalize_post_typename() patche _node["__typename"] in-place avant _download_images() — répare à la fois notre check ET instaloader's get_sidecar_nodes() pour les typenames XDT (XDTGraphSidecar → GraphSidecar). Tests : 8 nouveaux, 1700 passent.
+- **M012/HOTFIX-XDT (2026-04-22 — known bug):** UnicodeEncodeError cp1252 dans show.py quand OCR capte des caractères CJK — crash d'affichage seulement, pipeline complet. À corriger en S04 ou hotfix séparé (forcer PYTHONIOENCODING=utf-8 ou errors='replace' dans rich output).
 - **M012/S02:** dataclasses.replace(raw_analysis, video_id) used instead of manual rebind — preserves all M010 additive fields automatically
 - **M012/S02:** Synthetic OCR Transcript stays in-memory (never persisted to transcripts table) to avoid polluting non-audio content
 - **M012/S02:** _FRENCH_CONTRACTIONS (37) + _FRENCH_COMMON_VERBS (74) as separate named frozensets unioned into FRENCH_STOPWORDS

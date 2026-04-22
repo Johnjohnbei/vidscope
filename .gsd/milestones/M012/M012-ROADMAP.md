@@ -11,7 +11,8 @@
 - [x] **M012/S01: Metadata cohérence à l'ingestion** — Caption et engagement initial capturés dès l'ingestion dans InstaLoaderDownloader et YtdlpDownloader (2026-04-20)
 - [x] **M012/S02: Analyze intelligence carousel** — AnalyzeStage avec fallback OCR + stopwords FR/EN dans HeuristicAnalyzer (2026-04-21)
 - [x] **M012/S03: MCP output enrichi** — vidscope_get_video expose description, engagement et ocr_preview pour les carousels (2026-04-21)
-- [ ] **M012/S04: Audit dead code inter-adapters** — Review cross-adapter InstaLoader/yt-dlp/Fallback, suppression de la dette silencieuse
+- [x] **M012/HOTFIX-XDT: Carousel Instagram XDTGraphSidecar** — Normalisation in-place du typename XDT avant détection carousel ; 8 tests ajoutés ; validé sur URL réelle (9 slides, 138 blocs OCR) (2026-04-22)
+- [ ] **M012/S04: Audit dead code inter-adapters** — Review cross-adapter InstaLoader/yt-dlp/Fallback, suppression de la dette silencieuse. Known bug à traiter : UnicodeEncodeError cp1252 dans show.py (caractères CJK dans OCR)
 
 ---
 

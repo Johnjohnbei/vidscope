@@ -13,6 +13,7 @@ from vidscope.adapters.instaloader.downloader import (
     InstaLoaderDownloader,
     _extract_shortcode,
     _download_images,
+    _normalize_post_typename,
 )
 from vidscope.domain import IngestError, MediaType, Platform
 from vidscope.ports import ProbeStatus
@@ -125,6 +126,77 @@ class TestDownloadImages:
         paths = _download_images(post, tmp_path, _make_session())
 
         assert paths == []
+
+    def test_xdt_carousel_downloads_all_images(self, tmp_path: Path) -> None:
+        """Instagram API may return XDTGraphSidecar instead of GraphSidecar.
+
+        _normalize_post_typename must patch _node in-place so that both our
+        check AND instaloader's get_sidecar_nodes() (which also guards on
+        'GraphSidecar') see the normalised typename.
+        """
+        nodes = [
+            _make_node(is_video=False, display_url="https://cdn/0.jpg"),
+            _make_node(is_video=False, display_url="https://cdn/1.jpg"),
+        ]
+        post = MagicMock()
+        post._node = {"__typename": "XDTGraphSidecar"}
+        # Simulate instaloader's property: reads from _node first
+        type(post).typename = property(lambda self: self._node.get("__typename", ""))
+        post.get_sidecar_nodes.return_value = iter(nodes)
+
+        paths = _download_images(post, tmp_path, _make_session())
+
+        assert len(paths) == 2
+        assert post._node["__typename"] == "GraphSidecar"
+
+    def test_xdt_image_normalised(self, tmp_path: Path) -> None:
+        """XDTGraphImage is normalised and treated as a single image."""
+        post = MagicMock()
+        post._node = {"__typename": "XDTGraphImage"}
+        type(post).typename = property(lambda self: self._node.get("__typename", ""))
+        post.is_video = False
+        post.url = "https://cdn/img.jpg"
+
+        paths = _download_images(post, tmp_path, _make_session(b"data"))
+
+        assert len(paths) == 1
+        assert post._node["__typename"] == "GraphImage"
+
+
+class TestNormalizePostTypename:
+    def test_xdt_sidecar_normalized(self) -> None:
+        post = MagicMock()
+        post._node = {"__typename": "XDTGraphSidecar"}
+        _normalize_post_typename(post)
+        assert post._node["__typename"] == "GraphSidecar"
+
+    def test_xdt_image_normalized(self) -> None:
+        post = MagicMock()
+        post._node = {"__typename": "XDTGraphImage"}
+        _normalize_post_typename(post)
+        assert post._node["__typename"] == "GraphImage"
+
+    def test_xdt_video_normalized(self) -> None:
+        post = MagicMock()
+        post._node = {"__typename": "XDTGraphVideo"}
+        _normalize_post_typename(post)
+        assert post._node["__typename"] == "GraphVideo"
+
+    def test_already_canonical_unchanged(self) -> None:
+        post = MagicMock()
+        post._node = {"__typename": "GraphSidecar"}
+        _normalize_post_typename(post)
+        assert post._node["__typename"] == "GraphSidecar"
+
+    def test_missing_node_attr_does_not_raise(self) -> None:
+        post = MagicMock(spec=[])  # no _node attribute
+        _normalize_post_typename(post)  # must not raise
+
+    def test_node_without_typename_unchanged(self) -> None:
+        post = MagicMock()
+        post._node = {}
+        _normalize_post_typename(post)
+        assert post._node == {}
 
 
 # ---------------------------------------------------------------------------

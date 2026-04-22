@@ -153,8 +153,33 @@ def _load_netscape_cookies(L: Any, cookies_file: Path) -> None:
         pass
 
 
+_XDT_TYPENAME_MAP: dict[str, str] = {
+    "XDTGraphSidecar": "GraphSidecar",
+    "XDTGraphImage": "GraphImage",
+    "XDTGraphVideo": "GraphVideo",
+}
+
+
+def _normalize_post_typename(post: Any) -> None:
+    """Normalize XDT-prefixed typenames in instaloader Post._node in-place.
+
+    Instagram started returning 'XDTGraphSidecar' instead of 'GraphSidecar'
+    in some API responses. instaloader 4.15.1 normalizes this only inside
+    _obtain_metadata(), which is never triggered when _node already contains
+    the __typename key. Both our check and get_sidecar_nodes() (which also
+    compares against 'GraphSidecar') would silently fail without this fix.
+    """
+    try:
+        raw = post._node.get("__typename", "")
+        if raw in _XDT_TYPENAME_MAP:
+            post._node["__typename"] = _XDT_TYPENAME_MAP[raw]
+    except (AttributeError, TypeError):
+        pass
+
+
 def _download_images(post: Any, dest: Path, session: Any) -> list[str]:
     """Download all images from *post* into *dest*, return their paths."""
+    _normalize_post_typename(post)
     paths: list[str] = []
     if post.typename == "GraphSidecar":
         for i, node in enumerate(post.get_sidecar_nodes()):
