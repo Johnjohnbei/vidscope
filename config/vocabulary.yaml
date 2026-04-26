@@ -115,9 +115,19 @@ hotwords:
   - Anthropic
 
 corrections:
+  # Variantes "Claude Code" mal transcrites par Whisper
+  # NB: _apply_corrections (transcriber.py) utilise re.IGNORECASE → "CloudCode" catch
+  # déjà cloudcode/CLOUDCODE/CloudCODE etc. Variantes ci-dessous = explicites pour
+  # traçabilité + cas non couverts par lowercase trivial (typos, tirets, soudés FR)
   - wrong: "CloudCode"
     right: "Claude Code"
   - wrong: "Cloud Code"
+    right: "Claude Code"
+  - wrong: "cloudcode"
+    right: "Claude Code"
+  - wrong: "cloud-code"
+    right: "Claude Code"
+  - wrong: "claudcode"
     right: "Claude Code"
   - wrong: "Cloud Agent SDK"
     right: "Claude Agent SDK"
